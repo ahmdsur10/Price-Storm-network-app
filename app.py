@@ -147,9 +147,9 @@ with st.sidebar:
 st.title("🗺️ تطبيق حساب تكاليف شبكات السيول التفاعلي")
 st.write("تطبيق ذكي مبسط ومصمم خصيصاً لتسهيل تحليل أطوال شبكات السيول وحساب تكاليفها التقديرية بدقة دون تعقيد.")
 
-# إحداثيات الرياض والزوم البداية المحدث إلى 14
+# إحداثيات الرياض والزوم البداية 18 المفضل لديك لتقريب دقيق جداً
 RIYADH_LAT, RIYADH_LON = 24.7136, 46.6753
-START_ZOOM = 14
+START_ZOOM = 18
 
 network_lines = []
 
@@ -177,8 +177,8 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"حدث خطأ أثناء قراءة الملف المرفوع: {e}")
 
-# تقسيم واجهة العرض بالتوازي
-col1, col2 = st.columns([1, 2])
+# تقسيم واجهة العرض بالتوازي (توسيع عمود الخريطة وضبط المقاسات)
+col1, col2 = st.columns([1, 2.5])
 
 with col1:
     st.subheader("📊 حساب التكاليف للشبكة")
@@ -218,10 +218,31 @@ with col1:
     new_price = st.number_input("أدخل سعر المتر للخط الجديد (ريال):", min_value=0.0, value=1000.0, key="new_p")
 
 with col2:
-    st.subheader("🗺️ الخريطة الجغرافية التفاعلية")
+    st.subheader("🗺️ الخريطة الجغرافية التفاعلية المتقدمة")
     
-    # بناء الخريطة التفاعلية بزوم 14 الافتراضي لمدينة الرياض
-    m = folium.Map(location=[RIYADH_LAT, RIYADH_LON], zoom_start=START_ZOOM, control_scale=True)
+    # بناء الخريطة التفاعلية بزوم 18 الافتراضي لمدينة الرياض وبدون تحديد خلفية ثابتة لإتاحة التبديل
+    m = folium.Map(location=[RIYADH_LAT, RIYADH_LON], zoom_start=START_ZOOM, control_scale=True, tiles=None)
+    
+    # 1. إضافة خرائط الأساس المتنوعة (Tile Layers) للتبديل الاحترافي
+    folium.TileLayer('openstreetmap', name='الخريطة الافتراضية الطبوغرافية').add_to(m)
+    
+    folium.TileLayer(
+        tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+        attr='Google Satellite',
+        name='قمر صناعي (Google)',
+        overlay=False,
+        control=True
+    ).add_to(m)
+    
+    folium.TileLayer(
+        tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+        attr='Google Hybrid',
+        name='قمر صناعي مع الشوارع (Hybrid)',
+        overlay=False,
+        control=True
+    ).add_to(m)
+    
+    folium.TileLayer('cartodb dark_matter', name='الخريطة الداكنة الليلية').add_to(m)
     
     # إضافة أداة الرسم الحر للمسارات الجديدة
     from folium.plugins import Draw
@@ -238,15 +259,15 @@ with col2:
         }
     ).add_to(m)
     
-    # إضافة الخطوط الحالية إلى الخريطة التفاعلية مع ظهور رقم الـ index في الـ popup
+    # إضافة الخطوط الحالية إلى الخريطة التفاعلية مع ظهور رقم الـ index في الـ popup باللون الفسفوري الساطع/الأحمر لتناسب كل الخلفيات
     for line in network_lines:
         if line['geometry'].geom_type == 'LineString':
             coords = [(p[1], p[0]) for p in line['geometry'].coords]
             folium.PolyLine(
                 locations=coords,
-                color='#1d4ed8',
+                color='#ef4444', # لون أحمر حيوي ممتاز يظهر بوضوح في الخريطة العادية والستلايت
                 weight=5,
-                opacity=0.85,
+                opacity=0.9,
                 popup=f"<div style='text-align:right; direction:rtl; font-family:sans-serif;'>📌 <b>رقم الخط (Index): {line['index']}</b><br>📏 الطول: {line['length']:.2f} متر</div>"
             ).add_to(m)
         elif line['geometry'].geom_type == 'MultiLineString':
@@ -254,14 +275,17 @@ with col2:
                 coords = [(p[1], p[0]) for p in part.coords]
                 folium.PolyLine(
                     locations=coords,
-                    color='#1d4ed8',
+                    color='#ef4444',
                     weight=5,
-                    opacity=0.85,
+                    opacity=0.9,
                     popup=f"<div style='text-align:right; direction:rtl; font-family:sans-serif;'>📌 <b>رقم الخط (Index): {line['index']}</b><br>📏 الطول: {line['length']:.2f} متر</div>"
                 ).add_to(m)
+                
+    # إضافة أداة تحكم الطبقات (المنبثقة للتبديل بين خرائط الأساس)
+    folium.LayerControl(position='topright', collapsed=False).add_to(m)
             
-    # تشغيل وعرض الخريطة التفاعلية
-    map_data = st_folium(m, width="100%", height=650)
+    # تشغيل وعرض الخريطة التفاعلية الكبيرة (تم زيادة الارتفاع إلى 750 بكسل للتوسعة)
+    map_data = st_folium(m, width="100%", height=750)
     
     # معالجة بيانات الرسم المخصص للمستخدم
     if map_data and map_data.get('all_drawings'):

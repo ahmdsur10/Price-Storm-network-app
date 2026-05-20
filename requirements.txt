@@ -1,7 +1,6 @@
-streamlit==1.37.0
-streamlit-folium==0.24.0
-folium==0.17.0
-pandas==2.2.2
-numpy==2.0.1
-shapely==2.0.5
-geojson==3.1.0
+streamlit>=1.30.0
+folium>=0.15.0
+streamlit-folium>=0.18.0
+shapely>=2.0.0
+pyproj>=3.6.0
+pyshp>=2.3.0

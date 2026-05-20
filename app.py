@@ -3,73 +3,106 @@ import folium
 from streamlit_folium import st_folium
 import json
 import shapefile
-from shapely.geometry import shape, LineString
+from shapely.geometry import shape
 from pyproj import Geod
 
-# --- إعدادات الصفحة والتصميم ---
+# --- إعدادات الصفحة الأساسية ---
 st.set_page_config(
     page_title="حاسب تكاليف شبكات السيول",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# تخصيص واجهة المستخدم لدعم العربية (RTL) وزيادة عرض الـ Sidebar
+# --- التنسيق الجمالي الاحترافي المخصص وقلب الـ Sidebar إلى اليمين كلياً ---
 st.markdown("""
     <style>
-        /* تحويل اتجاه التطبيق بالكامل من اليمين إلى اليسار */
-        .main .block-container, div[data-testid="stSidebarUserContent"] {
+        /* إعدادات الاتجاه العام للتطبيق من اليمين لليسار */
+        html, body, [data-testid="stAppViewContainer"] {
             direction: RTL;
             text-align: right;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8fafc;
+        }
+
+        /* نقل الـ Sidebar بالكامل من اليسار إلى اليمين */
+        [data-testid="stSidebarCollapsedControl"] {
+            right: 20px;
+            left: auto;
         }
         
-        /* ضبط عناصر التحكم والقوائم المنسدلة لتتناسب مع اليمين */
-        div[role="listbox"], .stSelectbox, .stMultiSelect, .stNumberInput {
-            direction: RTL;
-            text-align: right;
+        section[data-testid="stSidebar"] {
+            right: 0;
+            left: auto;
+            border-left: 1px solid #e2e8f0;
+            border-right: none;
+            box-shadow: -4px 0 10px rgba(0,0,0,0.05);
+            background-color: #ffffff !important;
+            min-width: 420px !important;
+            max-width: 420px !important;
         }
         
-        /* تكبير عرض القائمة الجانبية وتعديل مكانها المخصص للـ RTL */
-        [data-testid="stSidebar"] {
-            min-width: 450px;
-            max-width: 450px;
-            direction: RTL;
+        /* ضبط إزاحة المحتوى الرئيسي ليتناسب مع وجود الـ Sidebar على اليمين */
+        @media (min-width: 576px) {
+            section[data-testid="stSidebar"] ~ [data-testid="stMain"] {
+                margin-right: 420px;
+                margin-left: 0px;
+            }
         }
-        
-        /* تنسيق العنوان الجانبي */
+
+        /* تحسين مظهر النصوص والعناوين داخل الـ Sidebar */
         .sidebar-title {
-            font-size: 24px !important;
+            font-size: 22px !important;
+            font-weight: 700;
+            color: #1e3a8a;
+            border-bottom: 2px solid #3b82f6;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        /* تصميم جميل وأنيق لبطاقة الأسعار الإرشادية */
+        .guide-card {
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            padding: 18px;
+            border-radius: 12px;
+            border-right: 6px solid #16a34a;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            margin-bottom: 25px;
+        }
+        .guide-card b {
+            color: #14532d;
+            font-size: 16px;
+        }
+
+        /* تحسين مظهر حاويات رفع الملفات والمدخلات */
+        .stFileUploader, .stSelectbox, .stMultiSelect, .stNumberInput {
+            margin-bottom: 15px;
+        }
+        
+        /* تحسين مظهر المؤشرات الرقمية (Metrics) */
+        div[data-testid="stMetricValue"] {
+            font-size: 28px !important;
             font-weight: bold;
-            color: #1E3A8A;
-            margin-bottom: 20px;
+            color: #2563eb;
         }
         
-        /* صندوق الإرشادات والأسعار */
-        .guide-box {
-            background-color: #f0f4f8;
-            padding: 15px;
-            border-radius: 8px;
-            border-right: 5px solid #1E3A8A;
-            margin-bottom: 20px;
-            direction: RTL;
-        }
-        
-        /* توقيع ثابت أسفل الشاشة جهة اليمين */
-        .footer-text {
+        /* بطاقة الحقوق الثابتة أسفل يمين الشاشة */
+        .premium-footer {
             position: fixed;
-            bottom: 10px;
-            right: 10px;
-            font-size: 14px;
-            color: #555;
-            background-color: rgba(255,255,255,0.9);
-            padding: 5px 15px;
-            border-radius: 5px;
-            border: 1px solid #ddd;
-            z-index: 100;
-            direction: RTL;
+            bottom: 15px;
+            right: 15px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #1e3a8a;
+            background: #ffffff;
+            padding: 8px 16px;
+            border-radius: 30px;
+            border: 1px solid #3b82f6;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+            z-index: 9999;
         }
         
-        /* محاذاة التلميحات المساعدة */
-        div[data-testid="stMarkdownContainer"] {
+        /* ضبط اتجاه تلميحات الادخال ونصوص المساعد الدلالي */
+        div[data-testid="stMarkdownContainer"] p {
             text-align: right;
         }
     </style>
@@ -88,42 +121,40 @@ def calculate_line_length(geometry):
         return total_len
     return 0
 
-# --- القائمة الجانبية (Sidebar) ---
+# --- القائمة الجانبية (Sidebar) في الجهة اليمنى المحدثة ---
 with st.sidebar:
     st.markdown('<p class="sidebar-title">⚙️ لوحة التحكم والإرشادات</p>', unsafe_allow_html=True)
     
-    # أسعار إرشادية للمستخدم
-    st.markdown('<div class="guide-box"><b>💰 الأسعار الإرشادية للمتر الطولي:</b><br>'
+    # بطاقة الأسعار الإرشادية بتصميمها الجديد
+    st.markdown('<div class="guide-card"><b>💰 الأسعار الإرشادية للمتر الطولي:</b><br><br>'
                 '• أنابيب قطر 1400 ملم: <b>4,004 ريال</b><br>'
                 '• قناة صندوقية (1.8x1.4): <b>9,336 ريال</b><br>'
                 '• قناة مفتوحة (عرض 12م وعمق 1.5م): <b>13,052 ريال</b></div>', unsafe_allow_html=True)
     
-    # رفع الملفات
+    # لوحة رفع الملفات الهندسية
     st.subheader("📂 رفع بيانات الشبكة")
     uploaded_file = st.file_uploader("اختر ملف شبكة السيول (GeoJSON أو Shapefile .shp)", type=['geojson', 'shp'])
 
     st.markdown("---")
-    # تذييل لحفظ الحقوق والفكرة داخل القائمة الجانبية
+    # حفظ حقوق الفكرة والمطور
     st.markdown("### 👤 إعداد وتطوير:")
     st.markdown("**Eng: Ahmed Adam**")
     st.caption("© 2026 جميع الحقوق محفوظة لمحرك التطبيق")
 
-# --- محتوى التطبيق الرئيسي ---
+# --- محتوى التطبيق الرئيسي (الجهة اليسرى والوسطى) ---
 st.title("🗺️ تطبيق حساب تكاليف شبكات السيول التفاعلي")
-st.write("تطبيق ذكي مبسط لتحليل أطوال شبكات السيول وحساب تكاليفها التقديرية بدقة وسرعة عالية.")
+st.write("تطبيق ذكي مبسط ومصمم خصيصاً لتسهيل تحليل أطوال شبكات السيول وحساب تكاليفها التقديرية بدقة دون تعقيد.")
 
-# إحداثيات الرياض الافتراضية والزوم المطلوب
+# إحداثيات الرياض الافتراضية والزوم الافتراضي 18
 RIYADH_LAT, RIYADH_LON = 24.7136, 46.6753
 START_ZOOM = 18
 
-# متغيرات لتخزين الخطوط المحملة في الذاكرة
 network_lines = []
 
-# 1. معالجة الملف المرفوع (دعم كامل للملفات والبيانات باللغة العربية)
+# 1. معالجة الملف المرفوع ودعم كامل للبيانات العربية
 if uploaded_file is not None:
     try:
         if uploaded_file.name.endswith('.geojson'):
-            # استخدام ترميز utf-8 لضمان قراءة النصوص العربية دون مشاكل رموز غريبة
             file_content = uploaded_file.read().decode('utf-8')
             data = json.loads(file_content)
             for idx, feature in enumerate(data.get('features', [])):
@@ -133,8 +164,6 @@ if uploaded_file is not None:
                     network_lines.append({'index': idx, 'geometry': geom, 'length': length})
                     
         elif uploaded_file.name.endswith('.shp'):
-            # استخدام مكتبة pyshp الخفيفة والنقية لقراءة ملفات الـ Shapefile مباشرة
-            # نقوم بقراءة الملف وتمرير ترميز اللغة العربية utf-8 لبيانات الجدول المصاحب إن وُجد
             with shapefile.Reader(shp=uploaded_file, encoding='utf-8') as sf:
                 for idx, shape_record in enumerate(sf.shapeRecords()):
                     geom = shape(shape_record.shape.__geo_interface__)
@@ -142,29 +171,29 @@ if uploaded_file is not None:
                         length = calculate_line_length(geom)
                         network_lines.append({'index': idx, 'geometry': geom, 'length': length})
                         
-        st.success(f"✅ تم تحميل {len(network_lines)} خط من الشبكة المرفوعة بنجاح!")
+        st.success(f"✅ تم تحميل {len(network_lines)} خط من الشبكة بنجاح!")
     except Exception as e:
-        st.error(f"حدث خطأ أثناء قراءة الملف: {e}")
+        st.error(f"حدث خطأ أثناء قراءة الملف المرفوع: {e}")
 
-# تقسيم واجهة العرض (عمود التحكم يمين، وعمود الخريطة يسار لتناسب الـ RTL)
+# تقسيم الواجهة (عمود المدخلات والحسابات، وعمود الخريطة الكبيرة)
 col1, col2 = st.columns([1, 2])
 
 with col1:
-    st.subheader("📊 حساب التكاليف للشبكة الحالية")
+    st.subheader("📊 حساب التكاليف للشبكة")
     
     if network_lines:
         available_indices = [item['index'] for item in network_lines]
         selected_indices = st.multiselect(
-            "اختر أرقام الخطوط (Index) المراد حساب تكلفتها:", 
+            "اختر أرقام الخطوط (Index):", 
             options=available_indices,
-            help="يمكنك كتابة رقم الـ Index أو اختيار عدة خطوط معاً مباشرة وسيقوم التطبيق بحساب مجموع الأطوال تلقائياً"
+            help="تطابق الأرقام هنا مع رقم الـ Index الظاهر في الـ Popup الخاص بكل خط على الخريطة"
         )
         
-        # حساب مجموع الأطوال المحددة
+        # حساب أطوال الخطوط التي حددها المستخدم
         total_selected_length = sum([item['length'] for item in network_lines if item['index'] in selected_indices])
         st.info(f"📏 مجموع أطوال الخطوط المختارة: **{total_selected_length:,.2f} متر**")
         
-        price_option = st.selectbox("نوع السعر المستهدف:", ["إدخال سعر مخصص", "أنبوب 1400 ملم", "قناة صندوقية", "قناة مفتوحة"])
+        price_option = st.selectbox("نوع السعر المستهدف للشبكة:", ["إدخال سعر مخصص", "أنبوب 1400 ملم", "قناة صندوقية", "قناة مفتوحة"])
         
         if price_option == "أنبوب 1400 ملم":
             unit_price = 4004
@@ -173,26 +202,26 @@ with col1:
         elif price_option == "قناة مفتوحة":
             unit_price = 13052
         else:
-            unit_price = st.number_input("أدخل سعر المتر الطولي المخصص (ريال):", min_value=0.0, value=1000.0, step=100.0)
+            unit_price = st.number_input("أدخل سعر المتر المخصص (ريال):", min_value=0.0, value=1000.0, step=100.0)
             
         total_cost = total_selected_length * unit_price
-        st.metric(label="💰 التكلفة الإجمالية للخطوط المختارة", value=f"{total_cost:,.2f} ريال")
+        st.metric(label="💰 التكلفة الكلية للخطوط المحددة", value=f"{total_cost:,.2f} ريال")
     else:
-        st.warning("الرجاء رفع ملف هندسي (GeoJSON / Shapefile) لتفعيل لوحة اختيار وحساب تكاليف الخطوط.")
+        st.warning("يرجى رفع ملف GeoJSON أو Shapefile لتفعيل لوحة حساب خطوط الشبكة.")
 
     st.markdown("---")
-    st.subheader("✏️ حساب تكلفة خط جديد (رسم يدوي)")
-    st.write("استخدم أداة الرسم الموجودة أعلى يسار الخريطة لرسم مسار خط مخصص:")
+    st.subheader("✏️ رسم مسار خط جديد")
+    st.write("ارسم خطاً مخصصاً على الخريطة لحساب طوله وتكلفته:")
     
-    new_price = st.number_input("أدخل سعر المتر الطولي للخط المرسوم الجديد (ريال):", min_value=0.0, value=1000.0, key="new_p")
+    new_price = st.number_input("أدخل سعر المتر للخط الجديد (ريال):", min_value=0.0, value=1000.0, key="new_p")
 
 with col2:
-    st.subheader("🗺️ الخريطة التفاعلية (منطقة الرياض)")
+    st.subheader("🗺️ الخريطة الجغرافية التفاعلية")
     
-    # إنشاء الخريطة والبدء بزوم 18 كما طلبت في الرياض
+    # إعداد الخريطة في الرياض بزوم 18 وثبات الأدوات
     m = folium.Map(location=[RIYADH_LAT, RIYADH_LON], zoom_start=START_ZOOM, control_scale=True)
     
-    # إضافة أداة الرسم للتطبيق
+    # إضافة أداة الرسم الحر
     from folium.plugins import Draw
     Draw(
         export=False,
@@ -207,32 +236,32 @@ with col2:
         }
     ).add_to(m)
     
-    # إسقاط خطوط الشبكة على الخريطة
+    # إسقاط خطوط البيانات المرفوعة على الخريطة مع الـ Popup بالـ Index الصحيح
     for line in network_lines:
         if line['geometry'].geom_type == 'LineString':
             coords = [(p[1], p[0]) for p in line['geometry'].coords]
             folium.PolyLine(
                 locations=coords,
-                color='blue',
-                weight=4,
-                opacity=0.8,
-                popup=f"<div style='text-align:right; direction:rtl;'>📌 <b>رقم الخط (Index): {line['index']}</b><br>📏 الطول: {line['length']:.2f} متر</div>"
+                color='#1d4ed8',
+                weight=5,
+                opacity=0.85,
+                popup=f"<div style='text-align:right; direction:rtl; font-family:sans-serif;'>📌 <b>رقم الخط (Index): {line['index']}</b><br>📏 الطول: {line['length']:.2f} متر</div>"
             ).add_to(m)
         elif line['geometry'].geom_type == 'MultiLineString':
             for part in line['geometry'].geoms:
                 coords = [(p[1], p[0]) for p in part.coords]
                 folium.PolyLine(
                     locations=coords,
-                    color='blue',
-                    weight=4,
-                    opacity=0.8,
-                    popup=f"<div style='text-align:right; direction:rtl;'>📌 <b>رقم الخط (Index): {line['index']}</b><br>📏 الطول: {line['length']:.2f} متر</div>"
+                    color='#1d4ed8',
+                    weight=5,
+                    opacity=0.85,
+                    popup=f"<div style='text-align:right; direction:rtl; font-family:sans-serif;'>📌 <b>رقم الخط (Index): {line['index']}</b><br>📏 الطول: {line['length']:.2f} متر</div>"
                 ).add_to(m)
             
-    # تشغيل الخريطة التفاعلية وعرضها
+    # عرض الخريطة واستقبال البيانات التفاعلية
     map_data = st_folium(m, width="100%", height=650)
     
-    # التحقق من وجود رسم مخصص جديد من المستخدم
+    # رصد وحساب الخطوط الجديدة المرسومة يدوياً
     if map_data and map_data.get('all_drawings'):
         drawings = map_data['all_drawings']
         drawn_lengths = []
@@ -247,9 +276,9 @@ with col2:
             total_drawn_cost = total_drawn_length * new_price
             
             with col1:
-                st.success("📐 تم رصد خط مرسوم على الخريطة بنجاح!")
-                st.write(f"📏 طول المسار المرسوم: **{total_drawn_length:,.2f} متر**")
-                st.metric(label="💰 التكلفة المقدرة للمسار المرسوم", value=f"{total_drawn_cost:,.2f} ريال")
+                st.success("📐 تم رصد مسار مرسوم حديثاً!")
+                st.write(f"📏 طول الخط المرسوم: **{total_drawn_length:,.2f} متر**")
+                st.metric(label="💰 تكلفة المسار المرسوم", value=f"{total_drawn_cost:,.2f} ريال")
 
-# إضافة التوقيع المرئي الثابت لحفظ الفكرة والحقوق أسفل يمين الشاشة
-st.markdown(f'<div class="footer-text">📐 فكرة وتطوير المهندس: <b>Ahmed Adam</b></div>', unsafe_allow_html=True)
+# التوقيع والمظهر الاحترافي الثابت لحفظ فكرتك وحقوقك في أسفل يمين الشاشة
+st.markdown(f'<div class="premium-footer">📐 فكرة وتطوير المهندس: <b>Ahmed Adam</b></div>', unsafe_allow_html=True)

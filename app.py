@@ -46,7 +46,7 @@ st.markdown("""
             z-index: 100;
         }
     </style>
-""", unsafe_allow_name_escaped=True)
+""", unsafe_allow_html=True)
 
 # دالة لحساب طول الخط بالأمتار بدقة (WGS84)
 def calculate_line_length(geometry):
@@ -90,7 +90,6 @@ network_lines = []
 if uploaded_file is not None:
     try:
         if uploaded_file.name.endswith('.geojson'):
-            # قراءة GeoJSON ميكانيكياً
             data = json.load(uploaded_file)
             for idx, feature in enumerate(data.get('features', [])):
                 geom = shape(feature['geometry'])
@@ -99,8 +98,6 @@ if uploaded_file is not None:
                     network_lines.append({'index': idx, 'geometry': geom, 'length': length})
                     
         elif uploaded_file.name.endswith('.shp'):
-            # قراءة Shapefile عبر pyshp الخفيفة بدون مشاكل gdal
-            # نكتب الملف مؤقتاً في الذاكرة للقراءة
             with shapefile.Reader(shp=uploaded_file) as sf:
                 for idx, shape_record in enumerate(sf.shapeRecords()):
                     geom = shape(shape_record.shape.__geo_interface__)
@@ -119,7 +116,6 @@ with col1:
     st.subheader("📊 حساب التكاليف للشبكة الحالية")
     
     if network_lines:
-        # اختيار متعدد للخطوط بناءً على الـ Index المطلوب
         available_indices = [item['index'] for item in network_lines]
         selected_indices = st.multiselect(
             "اختر أرقام الخطوط (Index) المراد حساب تكلفتها:", 
@@ -127,11 +123,9 @@ with col1:
             help="يمكنك البحث عن رقم الخط المكتوب في الخريطة واختياره هنا"
         )
         
-        # حساب مجموع الأطوال المحددة
         total_selected_length = sum([item['length'] for item in network_lines if item['index'] in selected_indices])
         st.info(f"📏 مجموع أطوال الخطوط المختارة: **{total_selected_length:,.2f} متر**")
         
-        # إدخال السعر مخصص أو اختيار سعر إرشادي
         price_option = st.selectbox("نوع السعر:", ["إدخال سعر مخصص", "أنبوب 1400 ملم", "قناة صندوقية", "قناة مفتوحة"])
         
         if price_option == "أنبوب 1400 ملم":
@@ -157,10 +151,8 @@ with col1:
 with col2:
     st.subheader("🗺️ الخريطة التفاعلية")
     
-    # بناء خريطة Folium مخصصة
     m = folium.Map(location=[RIYADH_LAT, RIYADH_LON], zoom_start=START_ZOOM, control_scale=True)
     
-    # إضافة أداة الرسم الحر للخطوط المخصصة
     from folium.plugins import Draw
     Draw(
         export=False,
@@ -175,9 +167,7 @@ with col2:
         }
     ).add_to(m)
     
-    # عرض خطوط الشبكة المرفوعة على الخريطة
     for line in network_lines:
-        # تحويل الإحداثيات لشكل يفهمه folium (Lat, Lon) بدلاً من (Lon, Lat)
         if line['geometry'].geom_type == 'LineString':
             coords = [(p[1], p[0]) for p in line['geometry'].coords]
             folium.PolyLine(
@@ -188,10 +178,8 @@ with col2:
                 popup=f"📌 <b>رقم الخط (Index): {line['index']}</b><br>📏 الطول: {line['length']:.2f} متر"
             ).add_to(m)
             
-    # عرض الخريطة في Streamlit والتقاط بيانات التفاعل ورسم المستخدم
     map_data = st_folium(m, width="100%", height=600)
     
-    # معالجة الخطوط المرسومة حديثاً من قِبل المستخدم وحساب طولها وتكلفتها
     if map_data and map_data.get('all_drawings'):
         drawings = map_data['all_drawings']
         drawn_lengths = []

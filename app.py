@@ -111,9 +111,11 @@ st.markdown("""
 # دالة لحساب طول الخط بالأمتار بدقة (WGS84)
 def calculate_line_length(geometry):
     if geometry.geom_type == 'LineString':
+        from pyproj import Geod
         geod = Geod(ellps="WGS84")
         return geod.geometry_length(geometry)
     elif geometry.geom_type == 'MultiLineString':
+        from pyproj import Geod
         geod = Geod(ellps="WGS84")
         total_len = 0
         for part in geometry.geoms:
@@ -121,17 +123,17 @@ def calculate_line_length(geometry):
         return total_len
     return 0
 
-# --- القائمة الجانبية (Sidebar) في الجهة اليمنى المحدثة ---
+# --- القائمة الجانبية (Sidebar) في الجهة اليمنى ---
 with st.sidebar:
     st.markdown('<p class="sidebar-title">⚙️ لوحة التحكم والإرشادات</p>', unsafe_allow_html=True)
     
-    # بطاقة الأسعار الإرشادية بتصميمها الجديد
+    # بطاقة الأسعار الإرشادية التقديرية للمستخدم
     st.markdown('<div class="guide-card"><b>💰 الأسعار الإرشادية للمتر الطولي:</b><br><br>'
                 '• أنابيب قطر 1400 ملم: <b>4,004 ريال</b><br>'
                 '• قناة صندوقية (1.8x1.4): <b>9,336 ريال</b><br>'
                 '• قناة مفتوحة (عرض 12م وعمق 1.5م): <b>13,052 ريال</b></div>', unsafe_allow_html=True)
     
-    # لوحة رفع الملفات الهندسية
+    # رفع الملفات الهندسية باللغة العربية
     st.subheader("📂 رفع بيانات الشبكة")
     uploaded_file = st.file_uploader("اختر ملف شبكة السيول (GeoJSON أو Shapefile .shp)", type=['geojson', 'shp'])
 
@@ -145,13 +147,13 @@ with st.sidebar:
 st.title("🗺️ تطبيق حساب تكاليف شبكات السيول التفاعلي")
 st.write("تطبيق ذكي مبسط ومصمم خصيصاً لتسهيل تحليل أطوال شبكات السيول وحساب تكاليفها التقديرية بدقة دون تعقيد.")
 
-# إحداثيات الرياض الافتراضية والزوم الافتراضي 18
+# إحداثيات الرياض والزوم البداية المحدث إلى 14
 RIYADH_LAT, RIYADH_LON = 24.7136, 46.6753
-START_ZOOM = 18
+START_ZOOM = 14
 
 network_lines = []
 
-# 1. معالجة الملف المرفوع ودعم كامل للبيانات العربية
+# 1. معالجة الملف المرفوع ودعم كامل للبيانات العربية والـ Shapefile
 if uploaded_file is not None:
     try:
         if uploaded_file.name.endswith('.geojson'):
@@ -175,7 +177,7 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"حدث خطأ أثناء قراءة الملف المرفوع: {e}")
 
-# تقسيم الواجهة (عمود المدخلات والحسابات، وعمود الخريطة الكبيرة)
+# تقسيم واجهة العرض بالتوازي
 col1, col2 = st.columns([1, 2])
 
 with col1:
@@ -189,7 +191,7 @@ with col1:
             help="تطابق الأرقام هنا مع رقم الـ Index الظاهر في الـ Popup الخاص بكل خط على الخريطة"
         )
         
-        # حساب أطوال الخطوط التي حددها المستخدم
+        # حساب مجموع الأطوال
         total_selected_length = sum([item['length'] for item in network_lines if item['index'] in selected_indices])
         st.info(f"📏 مجموع أطوال الخطوط المختارة: **{total_selected_length:,.2f} متر**")
         
@@ -218,10 +220,10 @@ with col1:
 with col2:
     st.subheader("🗺️ الخريطة الجغرافية التفاعلية")
     
-    # إعداد الخريطة في الرياض بزوم 18 وثبات الأدوات
+    # بناء الخريطة التفاعلية بزوم 14 الافتراضي لمدينة الرياض
     m = folium.Map(location=[RIYADH_LAT, RIYADH_LON], zoom_start=START_ZOOM, control_scale=True)
     
-    # إضافة أداة الرسم الحر
+    # إضافة أداة الرسم الحر للمسارات الجديدة
     from folium.plugins import Draw
     Draw(
         export=False,
@@ -236,7 +238,7 @@ with col2:
         }
     ).add_to(m)
     
-    # إسقاط خطوط البيانات المرفوعة على الخريطة مع الـ Popup بالـ Index الصحيح
+    # إضافة الخطوط الحالية إلى الخريطة التفاعلية مع ظهور رقم الـ index في الـ popup
     for line in network_lines:
         if line['geometry'].geom_type == 'LineString':
             coords = [(p[1], p[0]) for p in line['geometry'].coords]
@@ -258,10 +260,10 @@ with col2:
                     popup=f"<div style='text-align:right; direction:rtl; font-family:sans-serif;'>📌 <b>رقم الخط (Index): {line['index']}</b><br>📏 الطول: {line['length']:.2f} متر</div>"
                 ).add_to(m)
             
-    # عرض الخريطة واستقبال البيانات التفاعلية
+    # تشغيل وعرض الخريطة التفاعلية
     map_data = st_folium(m, width="100%", height=650)
     
-    # رصد وحساب الخطوط الجديدة المرسومة يدوياً
+    # معالجة بيانات الرسم المخصص للمستخدم
     if map_data and map_data.get('all_drawings'):
         drawings = map_data['all_drawings']
         drawn_lengths = []

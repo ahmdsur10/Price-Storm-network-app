@@ -3,23 +3,30 @@ import folium
 from streamlit_folium import st_folium
 import pandas as pd
 import json
-import shapely.geometry as sg
 from shapely.geometry import LineString, mapping
 from pyproj import Geod
-import numpy as np
 
 # ------------------------------------------------------------
-# تنسيق الصفحة وتوسيع الشريط الجانبي
+# إعدادات الصفحة وRTL
 # ------------------------------------------------------------
 st.set_page_config(page_title="حساب تكلفة شبكات السيول", layout="wide")
 
+# CSS للتوجيه من اليمين لليسار وتوسيع الشريط الجانبي
 st.markdown(
     """
     <style>
+        /* جعل التطبيق كاملاً RTL */
+        .stApp {
+            direction: rtl;
+            text-align: right;
+        }
+        /* الشريط الجانبي */
         section[data-testid="stSidebar"] {
             min-width: 380px !important;
             width: 380px !important;
+            direction: rtl;
         }
+        /* تذييل الصفحة */
         .footer {
             position: fixed;
             bottom: 0;
@@ -31,6 +38,15 @@ st.markdown(
             font-size: 14px;
             color: #333;
             border-top: 1px solid #ddd;
+            direction: ltr; /* التوقيع يبقى عادي */
+        }
+        /* تعديل محاذاة عناصر الإدخال */
+        .stTextInput, .stSelectbox, .stRadio, .stCheckbox {
+            text-align: right;
+        }
+        /* جداول البيانات */
+        .dataframe {
+            direction: rtl;
         }
     </style>
     """,
@@ -42,32 +58,40 @@ st.markdown(
 # ------------------------------------------------------------
 @st.cache_data
 def load_geojson(file) -> pd.DataFrame:
+    """تحميل GeoJSON وإرجاع DataFrame مع أعمدة: geometry (shapely), length_m, index_1based"""
     data = json.load(file)
     features = data.get("features", [])
     records = []
     geod = Geod(ellps="WGS84")
-    for feat in features:
+    for idx, feat in enumerate(features):
         geom = feat.get("geometry")
         if geom and geom["type"] == "LineString":
             coords = geom["coordinates"]
             line = LineString(coords)
-            _, _, dist = geod.inv(line.coords[:-1], line.coords[1:])
-            length_m = sum(dist)
+            # حساب الطول بالمتر
+            total_length = 0.0
+            for i in range(len(coords)-1):
+                _, _, dist = geod.inv(coords[i][1], coords[i][0], coords[i+1][1], coords[i+1][0])
+                total_length += dist
             records.append({
-                "index": len(records),
+                "index": idx,
+                "index_1based": idx + 1,
                 "geometry": line,
-                "length_m": length_m
+                "length_m": total_length,
+                "num_points": len(coords)
             })
     df = pd.DataFrame(records)
-    if not df.empty:
-        df["index_1based"] = df.index + 1
     return df
 
 def compute_line_length(line_geom: LineString) -> float:
+    """حساب طول أي خط (شيبلي) بالمتر"""
     geod = Geod(ellps="WGS84")
     coords = list(line_geom.coords)
-    _, _, dist = geod.inv(coords[:-1], coords[1:])
-    return sum(dist)
+    total = 0.0
+    for i in range(len(coords)-1):
+        _, _, dist = geod.inv(coords[i][1], coords[i][0], coords[i+1][1], coords[i+1][0])
+        total += dist
+    return total
 
 # ------------------------------------------------------------
 # حالة الجلسة
@@ -77,9 +101,9 @@ if "gdf" not in st.session_state:
 if "drawn_line" not in st.session_state:
     st.session_state.drawn_line = None
 if "map_center" not in st.session_state:
-    st.session_state.map_center = [24.7136, 46.6753]
+    st.session_state.map_center = [24.7136, 46.6753]  # الرياض
 if "zoom_start" not in st.session_state:
-    st.session_state.zoom_start = 18
+    st.session_state.zoom_start = 11   # تم التغيير إلى 11
 
 # ------------------------------------------------------------
 # الشريط الجانبي
@@ -133,6 +157,7 @@ if uploaded_file is not None:
         st.error(f"خطأ في قراءة الملف: {e}")
         st.session_state.gdf = pd.DataFrame()
 
+# إذا لم يتم تحميل بيانات نعرض خريطة فارغة ونوقف
 if st.session_state.gdf.empty:
     st.info("📂 يرجى رفع ملف GeoJSON من الشريط الجانبي لعرض الخطوط وحساب التكاليف.")
     m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.zoom_start)
@@ -140,11 +165,31 @@ if st.session_state.gdf.empty:
     st.stop()
 
 # ------------------------------------------------------------
-# بناء الخريطة التفاعلية
+# جدول البيانات التفاعلي مع البحث
 # ------------------------------------------------------------
+st.markdown("## 📊 جدول بيانات الخطوط (قابل للبحث)")
 gdf = st.session_state.gdf
+
+# إنشاء نسخة للعرض بدون geometry
+display_df = gdf[["index_1based", "length_m", "num_points"]].copy()
+display_df.columns = ["رقم الخط", "الطول (متر)", "عدد النقاط"]
+
+# إضافة مربع بحث
+search_term = st.text_input("🔍 بحث حسب رقم الخط (أدخل رقماً)", placeholder="مثال: 5")
+if search_term.isdigit():
+    filtered_df = display_df[display_df["رقم الخط"] == int(search_term)]
+else:
+    filtered_df = display_df
+
+st.dataframe(filtered_df, use_container_width=True, height=200)
+
+# ------------------------------------------------------------
+# بناء الخريطة التفاعلية مع zoom=11
+# ------------------------------------------------------------
+st.markdown("## 🗺️ خريطة شبكة السيول")
 m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.zoom_start)
 
+# إضافة جميع الخطوط مع popup
 for idx, row in gdf.iterrows():
     line_geom = row["geometry"]
     popup_text = f"<b>رقم الخط: {row['index_1based']}</b><br>الطول: {row['length_m']:.2f} متر"
@@ -153,9 +198,14 @@ for idx, row in gdf.iterrows():
         geojson_data,
         name=f"line_{idx}",
         popup=folium.Popup(popup_text, max_width=300),
-        style_function=lambda feature, col=row['length_m']: {"color": "blue", "weight": 3, "opacity": 0.7}
+        style_function=lambda feature, length=row['length_m']: {
+            "color": "blue",
+            "weight": 3,
+            "opacity": 0.7
+        }
     ).add_to(m)
 
+# إضافة أداة الرسم
 draw_control = folium.plugins.Draw(
     draw_options={
         "polyline": {"shapeOptions": {"color": "red", "weight": 4}},
@@ -169,8 +219,10 @@ draw_control = folium.plugins.Draw(
 )
 m.add_child(draw_control)
 
+# عرض الخريطة
 map_output = st_folium(m, width="100%", height=550, key="main_map")
 
+# معالجة الخط المرسوم
 if map_output and map_output.get("last_active_drawing"):
     drawing = map_output["last_active_drawing"]
     if drawing and drawing.get("geometry") and drawing["geometry"]["type"] == "LineString":
@@ -181,9 +233,8 @@ if map_output and map_output.get("last_active_drawing"):
             st.session_state.drawn_line = (new_line, length_m)
         else:
             st.session_state.drawn_line = None
-else:
-    pass
 
+# عرض معلومات الخط المرسوم وتكلفته
 if st.session_state.drawn_line is not None:
     drawn_geom, drawn_len = st.session_state.drawn_line
     st.markdown("---")
@@ -199,7 +250,7 @@ if st.session_state.drawn_line is not None:
         st.rerun()
 
 # ------------------------------------------------------------
-# اختيار متعدد للخطوط
+# اختيار متعدد من الجدول
 # ------------------------------------------------------------
 st.markdown("---")
 st.subheader("🔍 اختيار خطوط من الشبكة لحساب التكلفة الإجمالية")
@@ -208,7 +259,8 @@ line_numbers = gdf["index_1based"].tolist()
 selected_nums = st.multiselect(
     "اختر رقم/أرقام الخطوط (يمكنك اختيار أكثر من خط)",
     options=line_numbers,
-    format_func=lambda x: f"الخط رقم {x}"
+    format_func=lambda x: f"الخط رقم {x}",
+    key="multiselect_lines"
 )
 
 if selected_nums:
@@ -226,8 +278,11 @@ if selected_nums:
         detail_df.columns = ["رقم الخط", "الطول (متر)"]
         st.dataframe(detail_df, use_container_width=True)
 else:
-    st.caption("✏️ اختر خطاً واحداً أو أكثر من القائمة أعلاه")
+    st.caption("✏️ اختر خطاً واحداً أو أكثر من القائمة أعلاه أو من الجدول")
 
+# ------------------------------------------------------------
+# تذييل الصفحة
+# ------------------------------------------------------------
 st.markdown(
     "<div class='footer'>تطبيق حساب تكاليف شبكات السيول – تصميم وتطوير المهندس: أحمد آدم</div>",
     unsafe_allow_html=True

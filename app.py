@@ -1,30 +1,47 @@
+"""
+🌊 نظام تحليل شبكات السيول — النسخة المحسنة الاحترافية
+Optimized GIS Flood Network System
+Developed by: Eng. Ahmed Adam
+
+✔ سريع جداً
+✔ يحافظ على التنسيق الأصلي
+✔ يدعم GeoJSON + SHP ZIP
+✔ يمنع الانهيار والأخطاء
+✔ محسن لـ Streamlit Cloud
+"""
+
+# =========================================================
+# IMPORTS
+# =========================================================
+
 import streamlit as st
 import folium
+
 from folium.plugins import Draw, MeasureControl
 from streamlit_folium import st_folium
 
 import pandas as pd
 import numpy as np
+
 import tempfile
 import zipfile
 import os
 
+import shapefile
 import orjson as json
 
 from shapely.geometry import shape, mapping
-import shapefile
 
 # =========================================================
-# CONFIG
+# PAGE CONFIG
 # =========================================================
 
 st.set_page_config(
-    page_title="Flood Network System",
+    page_title="نظام تحليل شبكات السيول",
     page_icon="🌊",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
-
-RIYADH = [24.7136, 46.6753]
 
 # =========================================================
 # STYLE
@@ -33,27 +50,126 @@ RIYADH = [24.7136, 46.6753]
 st.markdown("""
 <style>
 
-.main {
-    background-color: #f5f7fa;
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Tajawal', sans-serif !important;
+    direction: rtl;
 }
 
-.block-container {
-    padding-top: 1rem;
+.main {
+    background: #f0f4f8;
+}
+
+.app-header {
+    background: linear-gradient(135deg,#0d1b2a,#0d6efd);
+    border-radius: 18px;
+    padding: 24px;
+    margin-bottom: 18px;
+    text-align: center;
+    color: white;
+}
+
+.card {
+    background: white;
+    border-radius: 14px;
+    padding: 18px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.08);
+    margin-bottom: 10px;
+    border-right: 5px solid #0d6efd;
+}
+
+.card .lbl {
+    color: #64748b;
+    font-size: .85rem;
+}
+
+.card .val {
+    color: #1e293b;
+    font-size: 1.7rem;
+    font-weight: 800;
+}
+
+.result {
+    background: linear-gradient(135deg,#e8f5e9,#c8e6c9);
+    border-radius: 14px;
+    padding: 24px;
+    text-align: center;
+    border: 2px solid #43a047;
+}
+
+.result .r-title {
+    font-size: 1rem;
+    color: #2e7d32;
+}
+
+.result .r-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: #1b5e20;
+}
+
+.sec-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #1a3a5c;
+    margin-bottom: 10px;
+}
+
+.info-box {
+    background: #e3f2fd;
+    padding: 14px;
+    border-radius: 10px;
+    color: #1565c0;
+    margin-bottom: 10px;
+}
+
+div[data-testid="stButton"] > button {
+    width: 100%;
+    border-radius: 10px;
+    border: none;
+    background: linear-gradient(135deg,#0d6efd,#0077b6);
+    color: white;
+    font-weight: 700;
+}
+
+footer {
+    visibility: hidden;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# HELPERS
+# CONSTANTS
+# =========================================================
+
+RIYADH = [24.7136, 46.6753]
+
+PRICES = [
+    ("أنابيب 1400 ملم", 4004.0),
+    ("قناة صندوقية", 9336.0),
+    ("قناة مفتوحة", 13052.0),
+]
+
+# =========================================================
+# GEOMETRY HELPERS
 # =========================================================
 
 def simplify_geometry(geom, tolerance=0.00001):
+
     try:
+
         g = shape(geom)
-        simp = g.simplify(tolerance, preserve_topology=True)
+
+        simp = g.simplify(
+            tolerance,
+            preserve_topology=True
+        )
+
         return mapping(simp)
-    except:
+
+    except Exception:
         return geom
 
 
@@ -96,102 +212,224 @@ def line_length(geom):
             return haversine(g.coords)
 
         if g.geom_type == "MultiLineString":
-            return sum(haversine(x.coords) for x in g.geoms)
+            return sum(
+                haversine(x.coords)
+                for x in g.geoms
+            )
 
-    except:
+    except Exception:
         return 0
 
     return 0
 
+# =========================================================
+# DATAFRAME BUILDER
+# =========================================================
+
+def _fc_to_df(fc):
+
+    rows = []
+
+    features = fc.get("features", [])
+
+    for i, feat in enumerate(features):
+
+        try:
+
+            geom = feat.get("geometry")
+
+            if geom is None:
+                continue
+
+            geom_type = geom.get("type")
+
+            if geom_type not in [
+                "LineString",
+                "MultiLineString"
+            ]:
+                continue
+
+            geom = simplify_geometry(geom)
+
+            props = feat.get("properties") or {}
+
+            row = {
+                "_idx": i,
+                "length_m": round(
+                    line_length(geom),
+                    2
+                ),
+                "_geom": json.dumps(geom).decode()
+            }
+
+            for k, v in props.items():
+
+                if isinstance(v, bytes):
+                    v = v.decode(
+                        "utf-8",
+                        "ignore"
+                    )
+
+                row[str(k)] = v
+
+            rows.append(row)
+
+        except Exception:
+            continue
+
+    if len(rows) == 0:
+
+        return pd.DataFrame(
+            columns=["length_m", "_geom"]
+        )
+
+    df = pd.DataFrame(rows)
+
+    df = df.set_index("_idx")
+
+    return df
 
 # =========================================================
-# LOAD FILE
+# FILE LOADERS
 # =========================================================
 
 @st.cache_data(show_spinner=False)
 def load_geojson(data):
 
-    fc = json.loads(data)
+    try:
 
-    rows = []
+        fc = json.loads(data)
 
-    for i, feat in enumerate(fc["features"]):
+        return _fc_to_df(fc)
 
-        geom = feat["geometry"]
+    except Exception as e:
 
-        if geom["type"] not in ["LineString", "MultiLineString"]:
-            continue
+        st.error(f"خطأ GeoJSON: {e}")
 
-        geom = simplify_geometry(geom)
-
-        rows.append({
-            "id": i,
-            "geometry": geom,
-            "length_m": round(line_length(geom), 2)
-        })
-
-    return pd.DataFrame(rows)
+        return pd.DataFrame(
+            columns=["length_m", "_geom"]
+        )
 
 
 @st.cache_data(show_spinner=False)
-def load_shp_zip(data):
+def load_shapefile_zip(data):
 
-    with tempfile.TemporaryDirectory() as tmp:
+    try:
 
-        zpath = os.path.join(tmp, "file.zip")
+        with tempfile.TemporaryDirectory() as tmp:
 
-        with open(zpath, "wb") as f:
-            f.write(data)
+            zp = os.path.join(
+                tmp,
+                "file.zip"
+            )
 
-        with zipfile.ZipFile(zpath) as z:
-            z.extractall(tmp)
+            with open(zp, "wb") as f:
+                f.write(data)
 
-        shp = None
+            with zipfile.ZipFile(zp) as z:
+                z.extractall(tmp)
 
-        for root, _, files in os.walk(tmp):
-            for f in files:
-                if f.endswith(".shp"):
-                    shp = os.path.join(root, f)
+            shp_path = None
 
-        if shp is None:
-            return None
+            for root, _, files in os.walk(tmp):
 
-        sf = shapefile.Reader(shp)
+                for f in files:
 
-        rows = []
+                    if f.endswith(".shp"):
 
-        for i, sr in enumerate(sf.shapeRecords()):
+                        shp_path = os.path.join(
+                            root,
+                            f
+                        )
 
-            geom = sr.shape.__geo_interface__
+            if shp_path is None:
 
-            if geom["type"] not in ["LineString", "MultiLineString"]:
-                continue
+                st.error("لا يوجد SHP")
 
-            geom = simplify_geometry(geom)
+                return pd.DataFrame(
+                    columns=["length_m", "_geom"]
+                )
 
-            rows.append({
-                "id": i,
-                "geometry": geom,
-                "length_m": round(line_length(geom), 2)
-            })
+            try:
 
-        return pd.DataFrame(rows)
+                sf = shapefile.Reader(
+                    shp_path,
+                    encoding="utf-8"
+                )
 
+            except Exception:
 
-def load_data(uploaded):
+                sf = shapefile.Reader(
+                    shp_path,
+                    encoding="cp1256"
+                )
+
+            fields = [
+                f[0]
+                for f in sf.fields[1:]
+            ]
+
+            features = []
+
+            for sr in sf.shapeRecords():
+
+                try:
+
+                    geom = sr.shape.__geo_interface__
+
+                    props = {
+                        k: v
+                        for k, v in zip(
+                            fields,
+                            sr.record
+                        )
+                    }
+
+                    features.append({
+                        "type": "Feature",
+                        "geometry": geom,
+                        "properties": props
+                    })
+
+                except Exception:
+                    continue
+
+            fc = {
+                "type": "FeatureCollection",
+                "features": features
+            }
+
+            return _fc_to_df(fc)
+
+    except Exception as e:
+
+        st.error(f"خطأ SHP: {e}")
+
+        return pd.DataFrame(
+            columns=["length_m", "_geom"]
+        )
+
+# =========================================================
+# FILE HANDLER
+# =========================================================
+
+def load_file(uploaded):
+
+    uploaded.seek(0)
 
     data = uploaded.read()
 
     name = uploaded.name.lower()
 
-    if name.endswith(".geojson") or name.endswith(".json"):
+    if name.endswith((".geojson", ".json")):
         return load_geojson(data)
 
     if name.endswith(".zip"):
-        return load_shp_zip(data)
+        return load_shapefile_zip(data)
 
-    return None
-
+    return pd.DataFrame(
+        columns=["length_m", "_geom"]
+    )
 
 # =========================================================
 # MAP
@@ -203,10 +441,15 @@ def create_base_map():
     m = folium.Map(
         location=RIYADH,
         zoom_start=12,
-        tiles="OpenStreetMap",
         control_scale=True,
-        prefer_canvas=True
+        prefer_canvas=True,
+        tiles="Cartodb Positron"
     )
+
+    folium.TileLayer(
+        tiles="OpenStreetMap",
+        name="Street"
+    ).add_to(m)
 
     folium.TileLayer(
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -216,95 +459,133 @@ def create_base_map():
 
     MeasureControl().add_to(m)
 
-    folium.LayerControl().add_to(m)
-
     return m
 
 
-def build_map(df, selected=None, draw=False):
+def build_map(df=None, selected=None, draw=False):
 
     m = create_base_map()
+
+    selected = set(selected or [])
 
     if df is not None and len(df) > 0:
 
         features = []
 
-        selected = selected or []
+        for idx, row in df.iterrows():
 
-        for _, row in df.iterrows():
+            try:
 
-            color = "#ff0000" if row["id"] in selected else "#0077b6"
+                color = (
+                    "#e63946"
+                    if idx in selected
+                    else "#0077b6"
+                )
 
-            weight = 5 if row["id"] in selected else 2
+                weight = (
+                    5
+                    if idx in selected
+                    else 2
+                )
 
-            features.append({
-                "type": "Feature",
-                "geometry": row["geometry"],
-                "properties": {
-                    "style": {
-                        "color": color,
-                        "weight": weight
+                features.append({
+                    "type": "Feature",
+                    "geometry": json.loads(
+                        row["_geom"]
+                    ),
+                    "properties": {
+                        "style": {
+                            "color": color,
+                            "weight": weight,
+                            "opacity": 0.8
+                        }
                     }
-                }
-            })
+                })
+
+            except Exception:
+                continue
 
         folium.GeoJson(
             {
                 "type": "FeatureCollection",
                 "features": features
             },
-            style_function=lambda x: x["properties"]["style"]
+            style_function=lambda x:
+                x["properties"]["style"],
+            zoom_on_click=False
         ).add_to(m)
 
     if draw:
 
         Draw(
             draw_options={
-                "polyline": True,
+                "polyline": {
+                    "shapeOptions": {
+                        "color": "#ff6b35",
+                        "weight": 4
+                    }
+                },
                 "polygon": False,
                 "rectangle": False,
                 "circle": False,
                 "marker": False,
-                "circlemarker": False
+                "circlemarker": False,
             }
         ).add_to(m)
 
-    return m
+    folium.LayerControl().add_to(m)
 
+    return m
 
 # =========================================================
 # SIDEBAR
 # =========================================================
 
-st.sidebar.title("📁 Upload")
+with st.sidebar:
 
-uploaded = st.sidebar.file_uploader(
-    "Upload GeoJSON or ZIP",
-    type=["geojson", "json", "zip"]
-)
+    st.markdown(
+        '<div class="sec-title">📁 رفع الملف</div>',
+        unsafe_allow_html=True
+    )
 
-price = st.sidebar.number_input(
-    "Price per meter",
-    min_value=0.0,
-    value=100.0
-)
+    uploaded = st.file_uploader(
+        "اختر ملف GeoJSON أو ZIP",
+        type=["geojson", "json", "zip"]
+    )
+
+    st.markdown("---")
+
+    price = st.number_input(
+        "💲 السعر لكل متر",
+        min_value=0.0,
+        value=100.0,
+        step=10.0
+    )
 
 # =========================================================
-# MAIN
+# HEADER
 # =========================================================
 
-st.title("🌊 Flood Network Analysis System")
+st.markdown("""
+<div class="app-header">
+<h1>🌊 نظام تحليل شبكات السيول</h1>
+<p>تحليل الشبكات · حساب الأطوال · تقدير التكاليف</p>
+</div>
+""", unsafe_allow_html=True)
+
+# =========================================================
+# EMPTY STATE
+# =========================================================
 
 if uploaded is None:
 
-    st.info("Upload file to start")
+    st.info("📁 ارفع ملف لبدء التحليل")
 
     empty_map = create_base_map()
 
     st_folium(
         empty_map,
-        height=500,
-        width=None,
+        height=550,
         use_container_width=True,
         returned_objects=[]
     )
@@ -312,19 +593,28 @@ if uploaded is None:
     st.stop()
 
 # =========================================================
-# LOAD
+# LOAD DATA
 # =========================================================
 
-with st.spinner("Loading data..."):
+with st.spinner("⏳ جاري قراءة البيانات..."):
 
-    if "df" not in st.session_state:
-        st.session_state.df = load_data(uploaded)
+    if "df_cache" not in st.session_state:
 
-df = st.session_state.df
+        st.session_state.df_cache = load_file(
+            uploaded
+        )
 
-if df is None:
+df = st.session_state.df_cache
 
-    st.error("Invalid file")
+# =========================================================
+# VALIDATION
+# =========================================================
+
+if len(df) == 0:
+
+    st.warning(
+        "⚠️ الملف لا يحتوي على خطوط صالحة"
+    )
 
     st.stop()
 
@@ -332,113 +622,195 @@ if df is None:
 # STATS
 # =========================================================
 
-total_length = df["length_m"].sum()
-
-col1, col2, col3 = st.columns(3)
-
-col1.metric(
-    "Lines",
-    f"{len(df):,}"
+total_m = float(
+    df["length_m"].sum()
 )
 
-col2.metric(
-    "Total Length",
-    f"{total_length/1000:.2f} km"
+avg_m = float(
+    df["length_m"].mean()
 )
 
-col3.metric(
-    "Average",
-    f"{df['length_m'].mean():.2f} m"
+max_m = float(
+    df["length_m"].max()
 )
 
-# =========================================================
-# SELECT
-# =========================================================
+c1, c2, c3, c4 = st.columns(4)
 
-selected = st.multiselect(
-    "Select lines",
-    options=df["id"].tolist()
+c1.markdown(
+    f"""
+    <div class="card">
+    <div class="lbl">📏 عدد الخطوط</div>
+    <div class="val">{len(df):,}</div>
+    </div>
+    """,
+    unsafe_allow_html=True
 )
 
-selected_length = 0
-
-if selected:
-
-    selected_length = df[
-        df["id"].isin(selected)
-    ]["length_m"].sum()
-
-# =========================================================
-# COST
-# =========================================================
-
-cost = selected_length * price
-
-st.success(
-    f"Total Cost = {cost:,.2f} SAR"
+c2.markdown(
+    f"""
+    <div class="card">
+    <div class="lbl">📐 الطول الكلي</div>
+    <div class="val">{total_m/1000:.2f} كم</div>
+    </div>
+    """,
+    unsafe_allow_html=True
 )
 
-# =========================================================
-# MAP
-# =========================================================
-
-map_obj = build_map(
-    df,
-    selected=selected,
-    draw=True
+c3.markdown(
+    f"""
+    <div class="card">
+    <div class="lbl">📊 المتوسط</div>
+    <div class="val">{avg_m:.1f} م</div>
+    </div>
+    """,
+    unsafe_allow_html=True
 )
 
-map_data = st_folium(
-    map_obj,
-    height=650,
-    width=None,
-    use_container_width=True,
-    returned_objects=["all_drawings"]
+c4.markdown(
+    f"""
+    <div class="card">
+    <div class="lbl">🔝 أطول خط</div>
+    <div class="val">{max_m:.1f} م</div>
+    </div>
+    """,
+    unsafe_allow_html=True
 )
 
 # =========================================================
-# DRAWINGS
+# TABS
 # =========================================================
 
-drawings = (map_data or {}).get("all_drawings") or []
+tab1, tab2, tab3 = st.tabs([
+    "🗺️ الخريطة",
+    "💰 الحساب",
+    "📊 البيانات"
+])
 
-if drawings:
+# =========================================================
+# TAB 1
+# =========================================================
 
-    lengths = []
+with tab1:
 
-    for d in drawings:
+    st.markdown(
+        '<div class="sec-title">🗺️ الخريطة التفاعلية</div>',
+        unsafe_allow_html=True
+    )
 
-        geom = d["geometry"]
+    selected = st.multiselect(
+        "اختر الخطوط",
+        options=df.index.tolist()
+    )
 
-        if geom["type"] == "LineString":
+    map_obj = build_map(
+        df,
+        selected=selected,
+        draw=True
+    )
 
-            lengths.append(
-                line_length(geom)
+    map_data = st_folium(
+        map_obj,
+        height=650,
+        use_container_width=True,
+        returned_objects=["all_drawings"]
+    )
+
+# =========================================================
+# TAB 2
+# =========================================================
+
+with tab2:
+
+    selected_length = 0
+
+    if selected:
+
+        selected_length = float(
+            df.loc[
+                selected,
+                "length_m"
+            ].sum()
+        )
+
+    cost = selected_length * price
+
+    st.markdown(
+        f"""
+        <div class="result">
+        <div class="r-title">💵 التكلفة الإجمالية</div>
+        <div class="r-value">{cost:,.2f} ﷼</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    drawings = (
+        map_data or {}
+    ).get("all_drawings") or []
+
+    if drawings:
+
+        lengths = []
+
+        for d in drawings:
+
+            try:
+
+                geom = d["geometry"]
+
+                if geom["type"] == "LineString":
+
+                    lengths.append(
+                        line_length(geom)
+                    )
+
+            except Exception:
+                continue
+
+        if lengths:
+
+            draw_total = sum(lengths)
+
+            draw_cost = draw_total * price
+
+            st.markdown("---")
+
+            st.markdown(
+                f"""
+                <div class="result">
+                <div class="r-title">✏️ تكلفة الخطوط المرسومة</div>
+                <div class="r-value">{draw_cost:,.2f} ﷼</div>
+                </div>
+                """,
+                unsafe_allow_html=True
             )
 
-    if lengths:
-
-        total_draw = sum(lengths)
-
-        st.info(
-            f"Drawn Length = {total_draw:,.2f} m"
-        )
-
-        st.success(
-            f"Drawn Cost = {total_draw * price:,.2f} SAR"
-        )
-
 # =========================================================
-# TABLE
+# TAB 3
 # =========================================================
 
-st.subheader("Data")
+with tab3:
 
-show_df = df.copy()
+    st.markdown(
+        '<div class="sec-title">📊 جدول البيانات</div>',
+        unsafe_allow_html=True
+    )
 
-show_df["geometry"] = show_df["geometry"].astype(str)
+    show_df = df.copy()
 
-st.dataframe(
-    show_df,
-    use_container_width=True
-)
+    show_df["_geom"] = "Geometry"
+
+    st.dataframe(
+        show_df,
+        use_container_width=True,
+        height=500
+    )
+
+    st.download_button(
+        "⬇️ تحميل CSV",
+        data=show_df.to_csv().encode(
+            "utf-8-sig"
+        ),
+        file_name="flood_network.csv",
+        mime="text/csv"
+    )

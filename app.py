@@ -147,9 +147,9 @@ with st.sidebar:
 st.title("🗺️ تطبيق حساب تكاليف شبكات السيول التفاعلي")
 st.write("تطبيق ذكي مبسط ومصمم خصيصاً لتسهيل تحليل أطوال شبكات السيول وحساب تكاليفها التقديرية بدقة دون تعقيد.")
 
-# إحداثيات الرياض والزوم البداية 18 المفضل لديك لتقريب دقيق جداً
+# إحداثيات الرياض والزوم البداية المحدث إلى 12 بناءً على طلبك لرؤية شاملة للمدينة
 RIYADH_LAT, RIYADH_LON = 24.7136, 46.6753
-START_ZOOM = 18
+START_ZOOM = 12
 
 network_lines = []
 
@@ -177,7 +177,7 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"حدث خطأ أثناء قراءة الملف المرفوع: {e}")
 
-# تقسيم واجهة العرض بالتوازي (توسيع عمود الخريطة وضبط المقاسات)
+# تقسيم واجهة العرض بالتوازي
 col1, col2 = st.columns([1, 2.5])
 
 with col1:
@@ -220,10 +220,10 @@ with col1:
 with col2:
     st.subheader("🗺️ الخريطة الجغرافية التفاعلية المتقدمة")
     
-    # بناء الخريطة التفاعلية بزوم 18 الافتراضي لمدينة الرياض وبدون تحديد خلفية ثابتة لإتاحة التبديل
+    # بناء الخريطة التفاعلية بالزوم الجديد 12
     m = folium.Map(location=[RIYADH_LAT, RIYADH_LON], zoom_start=START_ZOOM, control_scale=True, tiles=None)
     
-    # 1. إضافة خرائط الأساس المتنوعة (Tile Layers) للتبديل الاحترافي
+    # إضافة خرائط الأساس المتنوعة (Tile Layers)
     folium.TileLayer('openstreetmap', name='الخريطة الافتراضية الطبوغرافية').add_to(m)
     
     folium.TileLayer(
@@ -259,13 +259,13 @@ with col2:
         }
     ).add_to(m)
     
-    # إضافة الخطوط الحالية إلى الخريطة التفاعلية مع ظهور رقم الـ index في الـ popup باللون الفسفوري الساطع/الأحمر لتناسب كل الخلفيات
+    # إضافة الخطوط الحالية إلى الخريطة التفاعلية مع ظهور رقم الـ index في الـ popup باللون الأحمر الواضح
     for line in network_lines:
         if line['geometry'].geom_type == 'LineString':
             coords = [(p[1], p[0]) for p in line['geometry'].coords]
             folium.PolyLine(
                 locations=coords,
-                color='#ef4444', # لون أحمر حيوي ممتاز يظهر بوضوح في الخريطة العادية والستلايت
+                color='#ef4444', 
                 weight=5,
                 opacity=0.9,
                 popup=f"<div style='text-align:right; direction:rtl; font-family:sans-serif;'>📌 <b>رقم الخط (Index): {line['index']}</b><br>📏 الطول: {line['length']:.2f} متر</div>"
@@ -281,13 +281,13 @@ with col2:
                     popup=f"<div style='text-align:right; direction:rtl; font-family:sans-serif;'>📌 <b>رقم الخط (Index): {line['index']}</b><br>📏 الطول: {line['length']:.2f} متر</div>"
                 ).add_to(m)
                 
-    # إضافة أداة تحكم الطبقات (المنبثقة للتبديل بين خرائط الأساس)
+    # إضافة أداة تحكم الطبقات للتبديل بين خرائط الأساس
     folium.LayerControl(position='topright', collapsed=False).add_to(m)
             
-    # تشغيل وعرض الخريطة التفاعلية الكبيرة (تم زيادة الارتفاع إلى 750 بكسل للتوسعة)
+    # عرض الخريطة التفاعلية الكبيرة بارتفاع 750 بكسل للتوسعة والمشاهدة الشاملة
     map_data = st_folium(m, width="100%", height=750)
     
-    # معالجة بيانات الرسم المخصص للمستخدم
+    # معالجة بيانات الرسم المخصص للمخدم
     if map_data and map_data.get('all_drawings'):
         drawings = map_data['all_drawings']
         drawn_lengths = []

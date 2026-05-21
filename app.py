@@ -168,26 +168,23 @@ def make_map(df=None, sel=None, draw=False, zoom=18):
             return {"type":"FeatureCollection","features":[{
                 "type":"Feature",
                 "geometry":json.loads(r["_g"]),
-                "properties":{
-                    "رقم":str(i),
-                    "اسم":str(r[lc]) if lc else f"خط {i}",
-                    "طول":f"{r['length_m']:,.0f} م"
-                }} for i,r in rows.iterrows()]}
+                "properties":{"رقم":str(i)}
+                } for i,r in rows.iterrows()]}
 
         normal = df[~df.index.isin(sel)]
         if len(normal):
             folium.GeoJson(_fc(normal,"#0077b6",2.5),name="الشبكة",
                 style_function=lambda f:{"color":"#0077b6","weight":2.5,"opacity":.85},
                 tooltip=folium.GeoJsonTooltip(
-                    fields=["رقم","اسم","طول"],aliases=["رقم:","اسم:","طول:"],
-                    sticky=False,style="font-family:Tajawal;direction:rtl;font-size:13px"
+                    fields=["رقم"],aliases=["رقم الخط:"],
+                    sticky=False,style="font-family:Tajawal;direction:rtl;font-size:14px;font-weight:700"
                 )).add_to(m)
         if sel:
             folium.GeoJson(_fc(df[df.index.isin(sel)],"#e63946",5),name="مختار",
                 style_function=lambda f:{"color":"#e63946","weight":5,"opacity":1},
                 tooltip=folium.GeoJsonTooltip(
-                    fields=["رقم","اسم","طول"],aliases=["رقم:","اسم:","طول:"],
-                    sticky=False,style="font-family:Tajawal;direction:rtl;font-size:13px"
+                    fields=["رقم"],aliases=["رقم الخط:"],
+                    sticky=False,style="font-family:Tajawal;direction:rtl;font-size:14px;font-weight:700"
                 )).add_to(m)
 
         # fit bounds

@@ -339,22 +339,93 @@ with tab1:
         attr="Esri", name="صورة فضائية").add_to(m)
     folium.LayerControl(collapsed=True).add_to(m)
 
-    # رسم خطوط الملف المرفوع
+    # ── رسم خطوط الملف المرفوع مع اتجاه البداية والنهاية ──
     sel_set = set(json.loads(st.session_state.sel_set))
+
+    def arrow_icon(bearing_deg, color):
+        """سهم SVG يشير باتجاه الخط"""
+        return folium.DivIcon(
+            html=(
+                f'<div style="transform:rotate({bearing_deg}deg);'
+                f'width:0;height:0;'
+                f'border-left:6px solid transparent;'
+                f'border-right:6px solid transparent;'
+                f'border-bottom:14px solid {color};'
+                f'filter:drop-shadow(0 1px 2px rgba(0,0,0,.4));"></div>'
+            ),
+            icon_size=(12, 14),
+            icon_anchor=(6, 7)
+        )
+
+    def bearing(p1, p2):
+        """زاوية الاتجاه بين نقطتين [lon,lat]"""
+        lat1, lat2 = math.radians(p1[1]), math.radians(p2[1])
+        dlon = math.radians(p2[0] - p1[0])
+        x = math.sin(dlon) * math.cos(lat2)
+        y = math.cos(lat1)*math.sin(lat2) - math.sin(lat1)*math.cos(lat2)*math.cos(dlon)
+        return (math.degrees(math.atan2(x, y)) + 360) % 360
+
+    def mid_point(coords):
+        """النقطة الوسطى من الخط"""
+        n = len(coords)
+        return coords[n // 2]
+
     for f in feats:
         is_sel = f["i"] in sel_set
+        line_color  = "#e74c3c" if is_sel else "#1a5fa8"
+        start_color = "#27ae60"   # أخضر — البداية دائماً
+        end_color   = "#c0392b"   # أحمر — النهاية دائماً
+        latlngs = [(c[1], c[0]) for c in f["coords"]]
+
+        popup_html = (
+            f"<div dir='rtl' style='font-family:Cairo,sans-serif;font-size:13px;min-width:170px'>"
+            f"<b style='color:#1a5fa8;font-size:14px'>خط #{f['i']}</b><br>"
+            f"الطول: <b>{f['len']:,.1f} م</b> ({f['len']/1000:.3f} كم)<br>"
+            f"<span style='color:#27ae60'>● بداية</span> &nbsp; "
+            f"<span style='color:#c0392b'>● نهاية</span></div>"
+        )
+
+        # الخط نفسه
         folium.PolyLine(
-            [(c[1],c[0]) for c in f["coords"]],
-            color="#e74c3c" if is_sel else "#1a5fa8",
-            weight=5 if is_sel else 3,
-            opacity=0.92,
+            latlngs,
+            color=line_color, weight=5 if is_sel else 3, opacity=0.92,
             tooltip=f"خط #{f['i']} | {f['len']:,.0f} م",
-            popup=folium.Popup(
-                f"<div dir='rtl' style='font-family:Cairo,sans-serif;font-size:13px'>"
-                f"<b style='color:#1a5fa8'>خط #{f['i']}</b><br>"
-                f"الطول: <b>{f['len']:,.1f} م</b> ({f['len']/1000:.3f} كم)</div>",
-                max_width=200)
+            popup=folium.Popup(popup_html, max_width=220)
         ).add_to(m)
+
+        if len(f["coords"]) >= 2:
+            c_start = f["coords"][0]
+            c_end   = f["coords"][-1]
+
+            # نقطة البداية — دائرة خضراء
+            folium.CircleMarker(
+                location=(c_start[1], c_start[0]),
+                radius=5, color="#fff", weight=2,
+                fill=True, fill_color=start_color, fill_opacity=1.0,
+                tooltip="بداية الخط"
+            ).add_to(m)
+
+            # نقطة النهاية — دائرة حمراء
+            folium.CircleMarker(
+                location=(c_end[1], c_end[0]),
+                radius=5, color="#fff", weight=2,
+                fill=True, fill_color=end_color, fill_opacity=1.0,
+                tooltip="نهاية الخط"
+            ).add_to(m)
+
+            # سهم الاتجاه في المنتصف
+            if len(f["coords"]) >= 2:
+                mid = mid_point(f["coords"])
+                mid_idx = f["coords"].index(mid) if mid in f["coords"] else len(f["coords"]) // 2
+                p1 = f["coords"][max(0, mid_idx - 1)]
+                p2 = f["coords"][min(len(f["coords"]) - 1, mid_idx + 1)]
+                if p1 != p2:
+                    b = bearing(p1, p2)
+                    folium.Marker(
+                        location=(mid[1], mid[0]),
+                        icon=arrow_icon(b, line_color),
+                        tooltip=f"اتجاه خط #{f['i']}"
+                    ).add_to(m)
 
     # أداة الرسم
     Draw(draw_options={

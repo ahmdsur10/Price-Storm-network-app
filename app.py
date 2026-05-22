@@ -169,7 +169,7 @@ def make_df_cached(feats_json):
         rows.append(r)
     return pd.DataFrame(rows)
 
-def gen_pdf(sfeats, drawn_len, stot, cost, pr1):
+def gen_pdf(sfeats, drawn_len, drawn_coords, stot, cost, pr1):
     """PDF مع خريطة staticmap — الخطوط المختارة + المرسوم"""
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors as rlc
@@ -237,20 +237,27 @@ def gen_pdf(sfeats, drawn_len, stot, cost, pr1):
         ]))
         story += [lt, Spacer(1,12)]
 
-    # خريطة staticmap
+    # خريطة staticmap — الخطوط المختارة + الخط المرسوم
     try:
         from staticmap import StaticMap, Line
         from reportlab.platypus import Image as RLImg
         sm = StaticMap(580, 320, url_template="https://tile.openstreetmap.org/{z}/{x}/{y}.png")
         COLS = ["#e74c3c","#e67e22","#2ecc71","#9b59b6","#1abc9c","#f39c12","#16a085","#8e44ad"]
+        has_data = False
         for idx, f in enumerate(sfeats):
             if f["coords"]:
                 sm.add_line(Line([(c[0],c[1]) for c in f["coords"]], COLS[idx%len(COLS)], 4))
-        img = sm.render(zoom=14)
-        ib = BytesIO(); img.save(ib,"PNG"); ib.seek(0)
-        story.append(Paragraph("Location Map (OpenStreetMap)", S("mh",fontSize=11,textColor=C("#0a2a5e"),spaceAfter=5)))
-        story.append(RLImg(ib, width=17*cm, height=9.2*cm))
-        story.append(Paragraph("© OpenStreetMap contributors", S("cap",fontSize=7,textColor=rlc.grey,alignment=TA_CENTER)))
+                has_data = True
+        # رسم الخط المرسوم يدوياً بلون برتقالي مميز
+        if drawn_coords and len(drawn_coords) >= 2:
+            sm.add_line(Line([(c[0],c[1]) for c in drawn_coords], "#e67e22", 5))
+            has_data = True
+        if has_data:
+            img = sm.render(zoom=14)
+            ib = BytesIO(); img.save(ib,"PNG"); ib.seek(0)
+            story.append(Paragraph("Location Map (OpenStreetMap)", S("mh",fontSize=11,textColor=C("#0a2a5e"),spaceAfter=5)))
+            story.append(RLImg(ib, width=17*cm, height=9.2*cm))
+            story.append(Paragraph("© OpenStreetMap contributors", S("cap",fontSize=7,textColor=rlc.grey,alignment=TA_CENTER)))
     except Exception as e:
         story.append(Paragraph(f"Map not available: {e}", S("e",fontSize=8,textColor=rlc.orange,alignment=TA_CENTER)))
 
@@ -365,11 +372,6 @@ with tab1:
         y = math.cos(lat1)*math.sin(lat2) - math.sin(lat1)*math.cos(lat2)*math.cos(dlon)
         return (math.degrees(math.atan2(x, y)) + 360) % 360
 
-    def mid_point(coords):
-        """النقطة الوسطى من الخط"""
-        n = len(coords)
-        return coords[n // 2]
-
     for f in feats:
         is_sel = f["i"] in sel_set
         line_color  = "#e74c3c" if is_sel else "#1a5fa8"
@@ -413,19 +415,30 @@ with tab1:
                 tooltip="نهاية الخط"
             ).add_to(m)
 
-            # سهم الاتجاه في المنتصف
-            if len(f["coords"]) >= 2:
-                mid = mid_point(f["coords"])
-                mid_idx = f["coords"].index(mid) if mid in f["coords"] else len(f["coords"]) // 2
-                p1 = f["coords"][max(0, mid_idx - 1)]
-                p2 = f["coords"][min(len(f["coords"]) - 1, mid_idx + 1)]
+            # سهم الاتجاه في منتصف الخط — بلون الخط نفسه
+            n = len(f["coords"])
+            if n >= 3:
+                mid_idx = n // 2
+                p1 = f["coords"][mid_idx - 1]
+                p2 = f["coords"][min(mid_idx + 1, n - 1)]
+                mid_coord = f["coords"][mid_idx]
                 if p1 != p2:
                     b = bearing(p1, p2)
                     folium.Marker(
-                        location=(mid[1], mid[0]),
+                        location=(mid_coord[1], mid_coord[0]),
                         icon=arrow_icon(b, line_color),
                         tooltip=f"اتجاه خط #{f['i']}"
                     ).add_to(m)
+            elif n == 2:
+                # خط من نقطتين فقط — السهم في المنتصف الجغرافي
+                p1, p2 = f["coords"][0], f["coords"][1]
+                mid_coord = [(p1[0]+p2[0])/2, (p1[1]+p2[1])/2]
+                b = bearing(p1, p2)
+                folium.Marker(
+                    location=(mid_coord[1], mid_coord[0]),
+                    icon=arrow_icon(b, line_color),
+                    tooltip=f"اتجاه خط #{f['i']}"
+                ).add_to(m)
 
     # أداة الرسم
     Draw(draw_options={
@@ -437,9 +450,9 @@ with tab1:
     map_data = st_folium(m, width="100%", height=430,
                           returned_objects=["all_drawings"], key="main_map")
 
-    # حساب طول الخط المرسوم
+    # حساب طول الخط المرسوم + حفظ الإحداثيات
     drawn_len = 0.0
-    drawn_coords = []
+    drawn_coords = []   # [[lon,lat], ...]  تُمرَّر للـ PDF
     if map_data and map_data.get("all_drawings"):
         for drw in map_data["all_drawings"]:
             g = drw.get("geometry") or {}
@@ -447,7 +460,7 @@ with tab1:
                 c = g.get("coordinates",[])
                 if len(c) >= 2:
                     drawn_len += length_m_wgs(c)
-                    drawn_coords.extend(c)
+                    drawn_coords.extend([[float(p[0]),float(p[1])] for p in c])
 
     # ── معلومات الخط المرسوم ──
     if drawn_len > 0:
@@ -521,6 +534,7 @@ with tab1:
             st.session_state.cost_result = {
                 "sfeats": sfeats,
                 "drawn_len": drawn_len,
+                "drawn_coords": drawn_coords,   # ← إحداثيات الخط المرسوم للـ PDF
                 "stot": stot, "cost": cost, "pr1": pr1
             }
             st.session_state.pdf_bytes = None
@@ -547,6 +561,7 @@ with tab1:
                     try:
                         st.session_state.pdf_bytes = gen_pdf(
                             cr["sfeats"], cr["drawn_len"],
+                            cr.get("drawn_coords", []),
                             cr["stot"], cr["cost"], cr["pr1"]
                         )
                         st.success("✅ جاهز!")

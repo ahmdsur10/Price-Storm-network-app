@@ -1,462 +1,754 @@
-"""
-نظام تحليل شبكات السيول
-Eng. Ahmed Adam — v6.0 — 2025
-"""
-import streamlit as st, folium, json, os, tempfile, zipfile
-import numpy as np, pandas as pd
-from folium.plugins import Draw, MeasureControl
+import streamlit as st
+import json, math, os, tempfile, zipfile, io, base64
+from io import BytesIO
+import folium
+from folium.plugins import Draw
 from streamlit_folium import st_folium
-from shapely.geometry import shape
+import pandas as pd
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.units import cm
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage, HRFlowable
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+import urllib.request
+import urllib.parse
 
-# ── Page ──────────────────────────────────────────────────────
-st.set_page_config(page_title="شبكات السيول", page_icon="🌊",
+st.set_page_config(page_title="حاسبة شبكات السيول", page_icon="🌊",
                    layout="wide", initial_sidebar_state="expanded")
 
-# ── CSS ───────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;800&display=swap');
-*{font-family:'Tajawal',sans-serif!important;direction:rtl}
-.main{background:#f0f4f8}
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
+html,body,[class*="css"],.stApp{font-family:'Cairo',sans-serif!important;direction:rtl}
+[data-testid="stSidebar"]{min-width:340px!important;max-width:380px!important;background:#f7f9fc!important}
+.hdr{background:linear-gradient(135deg,#0a2a5e,#1a5fa8);color:#fff;padding:16px 22px;border-radius:12px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}
+.hdr h1{margin:0;font-size:1.35rem;font-weight:900}
+.hdr p{margin:2px 0 0;font-size:.82rem;color:#b8d9f8}
+.hdr .bdg{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);padding:5px 14px;border-radius:16px;font-size:.78rem;font-weight:700;white-space:nowrap}
+.mc{background:#fff;border-radius:10px;padding:12px 16px;box-shadow:0 2px 8px rgba(0,0,0,.07);border-top:4px solid #1a5fa8;text-align:center}
+.mc .v{font-size:1.45rem;font-weight:900;color:#0a2a5e}
+.mc .l{font-size:.78rem;color:#6b7a99;margin-top:2px}
+.res{background:linear-gradient(135deg,#0a2a5e,#1a5fa8);color:#fff!important;padding:18px 22px;border-radius:12px;font-size:1.05rem;font-weight:700;text-align:center;box-shadow:0 4px 16px rgba(26,95,168,.3);margin-top:10px;line-height:2}
+.ib{background:#eaf4ff;border-right:4px solid #1a5fa8;border-radius:7px;padding:10px 14px;font-size:.85rem;color:#0a2a5e;margin-bottom:8px;direction:rtl;line-height:1.8}
+.pc{background:#fff;border:1.5px solid #d0e4f7;border-right:5px solid #1a5fa8;border-radius:7px;padding:9px 13px;margin-bottom:7px;font-size:.84rem;color:#1a2a3a}
+.pc b{color:#0a2a5e}.pc small{color:#888}.pc span{color:#c0392b;font-weight:900;font-size:.9rem}
+.sig{background:#0a2a5e;color:#a8d0f0!important;text-align:center;padding:10px;border-radius:8px;margin-top:12px;font-size:.8rem}
+.sig b{color:#fff!important}
+.stButton>button{background:linear-gradient(135deg,#1a5fa8,#0a2a5e)!important;color:#fff!important;border:none!important;border-radius:9px!important;font-family:'Cairo',sans-serif!important;font-weight:700!important;font-size:.95rem!important;width:100%!important;padding:9px!important}
+</style>
+""", unsafe_allow_html=True)
 
-.hdr{background:linear-gradient(135deg,#1a3a5c,#0d6efd,#00b4d8);
-     border-radius:14px;padding:20px 30px;text-align:center;
-     color:#fff;box-shadow:0 6px 24px rgba(13,110,253,.3);margin-bottom:18px}
-.hdr h1{font-size:1.9rem;font-weight:800;margin:0}
-.hdr p{font-size:.92rem;opacity:.85;margin:6px 0 0}
+RLAT, RLON = 24.7136, 46.6753
 
-.card{background:#fff;border-radius:12px;padding:14px 18px;
-      box-shadow:0 2px 8px rgba(0,0,0,.07);border-right:5px solid #0d6efd;
-      margin-bottom:10px}
-.card.g{border-right-color:#43a047}
-.card.o{border-right-color:#fb8c00}
-.card .lb{color:#6b7280;font-size:.82rem}
-.card .vl{color:#1a3a5c;font-size:1.5rem;font-weight:800}
-.card.g .vl{color:#1b5e20} .card.o .vl{color:#e65100}
-.card .un{color:#0d6efd;font-size:.8rem;font-weight:600}
-.card.g .un{color:#43a047} .card.o .un{color:#fb8c00}
+# ── حساب الأطوال ──
+def hav(lon1, lat1, lon2, lat2):
+    R = 6371000
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dp/2)**2 + math.cos(p1)*math.cos(p2)*math.sin(dl/2)**2
+    return 2*R*math.asin(math.sqrt(a))
 
-.result{background:linear-gradient(135deg,#e8f5e9,#c8e6c9);
-        border:2px solid #43a047;border-radius:12px;
-        padding:18px 22px;text-align:center;margin-top:12px}
-.result .rv{font-size:2rem;font-weight:800;color:#1b5e20}
-.result .rs{font-size:.84rem;color:#388e3c;margin-top:4px;line-height:1.8}
+def length_m_wgs(coords_wgs):
+    """حساب الطول بالمتر من إحداثيات WGS84 [lon, lat]"""
+    t = 0.0
+    for i in range(len(coords_wgs)-1):
+        try:
+            t += hav(float(coords_wgs[i][0]), float(coords_wgs[i][1]),
+                     float(coords_wgs[i+1][0]), float(coords_wgs[i+1][1]))
+        except:
+            pass
+    return t
 
-.ibox{background:#e3f2fd;border:1px solid #90caf9;border-radius:10px;
-      padding:12px 16px;font-size:.88rem;color:#1565c0;line-height:1.9;margin:8px 0}
+def length_m_projected(coords_proj):
+    """حساب الطول بالمتر من إحداثيات مسقطة (x,y بالمتر)"""
+    t = 0.0
+    for i in range(len(coords_proj)-1):
+        dx = float(coords_proj[i+1][0]) - float(coords_proj[i][0])
+        dy = float(coords_proj[i+1][1]) - float(coords_proj[i][1])
+        t += math.sqrt(dx**2 + dy**2)
+    return t
 
-.pguide{background:#fff8e1;border:1px solid #ffe082;border-radius:10px;
-        padding:12px 16px;margin:8px 0;font-size:.86rem}
-.pguide .ph{font-size:.92rem;font-weight:800;color:#e65100;
-            border-bottom:1px dashed #ffcc80;padding-bottom:6px;margin-bottom:8px}
-.pguide .pr{display:flex;justify-content:space-between;
-            align-items:center;padding:4px 0;border-bottom:1px solid #fff3cd}
-.pguide .pr:last-of-type{border:none}
-.pguide .pn{color:#5d4037;font-weight:600;flex:1;font-size:.84rem}
-.pguide .pb{background:#e65100;color:#fff;border-radius:6px;
-            padding:2px 9px;font-size:.78rem;font-weight:700}
+def is_projected(coords):
+    """تحديد إذا كانت الإحداثيات مسقطة أم جغرافية"""
+    if not coords:
+        return False
+    x, y = float(coords[0][0]), float(coords[0][1])
+    # الإحداثيات الجغرافية WGS84: lon بين -180 و 180، lat بين -90 و 90
+    if abs(x) > 180 or abs(y) > 90:
+        return True
+    return False
 
-.stitle{font-size:1.05rem;font-weight:700;color:#1a3a5c;
-        border-bottom:2px solid #e2e8f0;padding-bottom:8px;margin-bottom:12px}
-
-section[data-testid="stSidebar"]{width:340px!important;min-width:340px!important}
-section[data-testid="stSidebar"]>div:first-child{width:340px!important;padding:1rem!important}
-
-.sig{background:linear-gradient(135deg,#0d1b2a,#1a3a5c,#0d6efd);
-     border-radius:12px;padding:16px;margin-top:14px;text-align:center;
-     box-shadow:0 4px 16px rgba(13,110,253,.25)}
-.sig .sn{font-size:1.15rem;font-weight:800;color:#fff;margin-top:4px}
-.sig .ss{font-size:.78rem;color:rgba(255,255,255,.6);margin-top:3px}
-.sig hr{border:0;border-top:1px solid rgba(255,255,255,.15);margin:8px 0}
-
-div[data-testid="stButton"]>button{
-  width:100%;background:linear-gradient(135deg,#0d6efd,#0077b6);
-  color:#fff;border:none;border-radius:10px;padding:11px;
-  font-size:1rem;font-weight:700;box-shadow:0 4px 10px rgba(13,110,253,.3)}
-footer{visibility:hidden}
-</style>""", unsafe_allow_html=True)
-
-# ── Constants ─────────────────────────────────────────────────
-RIYADH = [24.7136, 46.6753]
-PRICES = [
-    ("أنابيب بقطر 1400 ملم",       4_004.0),
-    ("قناة صندوقية (1.8×1.4) م",   9_336.0),
-    ("قناة مفتوحة (12×1.5) م",    13_052.0),
-]
-
-# ── Helpers ───────────────────────────────────────────────────
-def haversine(coords):
-    if len(coords) < 2: return 0.0
-    a = np.array(coords, dtype=float)
-    R = 6_371_000.0
-    lo, la = np.radians(a[:,0]), np.radians(a[:,1])
-    dph, dlm = np.diff(la), np.diff(lo)
-    x = np.sin(dph/2)**2 + np.cos(la[:-1])*np.cos(la[1:])*np.sin(dlm/2)**2
-    return float(R*2*np.sum(np.arctan2(np.sqrt(np.clip(x,0,1)),
-                                        np.sqrt(np.clip(1-x,0,1)))))
-
-def geom_length(g):
+def convert_projected_to_wgs84(coords, crs_wkt=None, epsg=None):
+    """تحويل إحداثيات مسقطة إلى WGS84"""
     try:
-        s = shape(g)
-        if s.geom_type == "LineString":    return round(haversine(list(s.coords)),2)
-        if s.geom_type == "MultiLineString": return round(sum(haversine(list(p.coords)) for p in s.geoms),2)
-    except: pass
-    return 0.0
-
-def label_col(df):
-    for c in ("name","Name","NAME","id","ID","FID","OBJECTID"):
-        if c in df.columns: return c
-    return None
-
-# ── File Loading ──────────────────────────────────────────────
-def fc_to_df(fc):
-    ok = {"LineString","MultiLineString"}
-    feats = [f for f in fc.get("features",[])
-             if f.get("geometry") and f["geometry"].get("type") in ok]
-    if not feats: return None
-    rows = []
-    for i,f in enumerate(feats):
-        p = f.get("properties") or {}
-        r = {"_i":i,"length_m":geom_length(f["geometry"]),"_g":json.dumps(f["geometry"])}
-        r.update({k:(v.decode("utf-8","ignore") if isinstance(v,bytes) else v) for k,v in p.items()})
-        rows.append(r)
-    df = pd.DataFrame(rows).set_index("_i")
-    df.index.name = "رقم"
-    return df
-
-@st.cache_data(show_spinner=False)
-def load_file(data, name):
-    n = name.lower()
-    try:
-        if n.endswith((".geojson",".json")):
-            return fc_to_df(json.loads(data.decode("utf-8")))
-        if n.endswith(".zip"):
-            import shapefile
-            with tempfile.TemporaryDirectory() as tmp:
-                zp = os.path.join(tmp,"u.zip")
-                open(zp,"wb").write(data)
-                zipfile.ZipFile(zp).extractall(tmp)
-                shps=[os.path.join(r,f) for r,_,fs in os.walk(tmp) for f in fs if f.endswith(".shp")]
-                if not shps: st.error("❌ لا يوجد .shp في الـ ZIP"); return None
-                try:    sf=shapefile.Reader(shps[0],encoding="utf-8")
-                except: sf=shapefile.Reader(shps[0],encoding="cp1256")
-                flds=[f[0] for f in sf.fields[1:]]
-                feats=[{"type":"Feature",
-                        "geometry":sr.shape.__geo_interface__,
-                        "properties":{k:(v.decode("utf-8","ignore") if isinstance(v,bytes) else v)
-                                      for k,v in zip(flds,sr.record)}}
-                       for sr in sf.shapeRecords()]
-                return fc_to_df({"type":"FeatureCollection","features":feats})
+        from pyproj import Transformer, CRS
+        if epsg:
+            transformer = Transformer.from_crs(f"EPSG:{epsg}", "EPSG:4326", always_xy=True)
+        elif crs_wkt:
+            src_crs = CRS.from_wkt(crs_wkt)
+            transformer = Transformer.from_crs(src_crs, "EPSG:4326", always_xy=True)
+        else:
+            # محاولة تخمين النظام — UTM zone 37N (شائع في السعودية)
+            transformer = Transformer.from_crs("EPSG:32637", "EPSG:4326", always_xy=True)
+        converted = []
+        for c in coords:
+            lon, lat = transformer.transform(float(c[0]), float(c[1]))
+            converted.append([lon, lat])
+        return converted
     except Exception as e:
-        st.error(f"❌ خطأ: {e}")
-    return None
+        st.warning(f"تعذّر التحويل تلقائياً: {e}")
+        return coords
 
-# ── Map Builder ───────────────────────────────────────────────
-def make_map(df=None, sel=None, draw=False, zoom=18):
-    sel = set(sel or [])
-    m = folium.Map(location=RIYADH, zoom_start=zoom, tiles=None,
-                   control_scale=True, prefer_canvas=True)
-    folium.TileLayer("OpenStreetMap",  name="شارع",  show=True).add_to(m)
-    folium.TileLayer(
-        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        attr="Esri", name="جوي", show=False).add_to(m)
+def center(coords):
+    v = [(float(c[0]), float(c[1])) for c in coords if len(c) >= 2]
+    if not v:
+        return RLAT, RLON
+    return sum(c[1] for c in v)/len(v), sum(c[0] for c in v)/len(v)
 
-    if df is not None and len(df):
-        lc = label_col(df)
+def parse_geom(geom):
+    if not geom:
+        return []
+    t = geom.get("type", "")
+    raw = geom.get("coordinates", [])
+    pts = (raw if t == "LineString"
+           else [p for part in raw for p in part] if t == "MultiLineString"
+           else [])
+    return [[float(c[0]), float(c[1])] for c in pts if isinstance(c, (list, tuple)) and len(c) >= 2]
 
-        def _fc(rows, color, w):
-            return {"type":"FeatureCollection","features":[{
-                "type":"Feature",
-                "geometry":json.loads(r["_g"]),
-                "properties":{"رقم":str(i)}
-                } for i,r in rows.iterrows()]}
+def load_geojson(text):
+    try:
+        gj = json.loads(text)
+    except:
+        st.error("خطأ في قراءة الملف")
+        return [], []
+    feats, all_c = [], []
+    for i, f in enumerate(gj.get("features", [])):
+        if not isinstance(f, dict):
+            continue
+        coords = parse_geom(f.get("geometry") or {})
+        if len(coords) < 2:
+            continue
+        props = f.get("properties") or {}
 
-        normal = df[~df.index.isin(sel)]
-        if len(normal):
-            folium.GeoJson(_fc(normal,"#0077b6",2.5),name="الشبكة",
-                style_function=lambda f:{"color":"#0077b6","weight":2.5,"opacity":.85},
-                tooltip=folium.GeoJsonTooltip(
-                    fields=["رقم"],aliases=["رقم الخط:"],
-                    sticky=False,style="font-family:Tajawal;direction:rtl;font-size:14px;font-weight:700"
-                )).add_to(m)
-        if sel:
-            folium.GeoJson(_fc(df[df.index.isin(sel)],"#e63946",5),name="مختار",
-                style_function=lambda f:{"color":"#e63946","weight":5,"opacity":1},
-                tooltip=folium.GeoJsonTooltip(
-                    fields=["رقم"],aliases=["رقم الخط:"],
-                    sticky=False,style="font-family:Tajawal;direction:rtl;font-size:14px;font-weight:700"
-                )).add_to(m)
+        # اكتشاف وتحويل الإحداثيات المسقطة
+        if is_projected(coords):
+            crs_info = gj.get("crs", {})
+            epsg = None
+            wkt = None
+            if crs_info:
+                props_crs = crs_info.get("properties", {})
+                name = props_crs.get("name", "")
+                if "EPSG:" in name.upper():
+                    try:
+                        epsg = int(name.upper().split("EPSG:")[-1].strip().split()[0])
+                    except:
+                        pass
+            # حساب الطول قبل التحويل (أدق)
+            length = round(length_m_projected(coords), 2)
+            coords = convert_projected_to_wgs84(coords, crs_wkt=wkt, epsg=epsg)
+        else:
+            length = round(length_m_wgs(coords), 2)
 
-        # fit bounds
-        pts=[]
-        for _,r in df.iterrows():
-            try:
-                b=shape(json.loads(r["_g"])).bounds
-                pts+=[[b[1],b[0]],[b[3],b[2]]]
-            except: pass
-        if pts: m.fit_bounds([[min(p[0] for p in pts),min(p[1] for p in pts)],
-                               [max(p[0] for p in pts),max(p[1] for p in pts)]])
+        feats.append({"i": i, "lbl": f"خط #{i}", "len": length, "coords": coords, "props": props})
+        all_c.extend(coords)
+    return feats, all_c
 
-    if draw:
-        Draw(draw_options={"polyline":{"shapeOptions":{"color":"#ff6b35","weight":4}},
-             "polygon":False,"rectangle":False,"circle":False,
-             "marker":False,"circlemarker":False},
-             edit_options={"edit":True,"remove":True}).add_to(m)
-    MeasureControl(position="topleft",primary_length_unit="meters").add_to(m)
-    folium.LayerControl(position="topright").add_to(m)
-    return m
+def load_shp(zb):
+    try:
+        import shapefile
+    except:
+        st.error("مكتبة pyshp غير متاحة")
+        return [], []
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            with zipfile.ZipFile(BytesIO(zb)) as z:
+                z.extractall(td)
+            shp = next((os.path.join(r, f) for r, _, fs in os.walk(td)
+                        for f in fs if f.lower().endswith(".shp")), None)
+            if not shp:
+                st.error("لم يُعثر على .shp")
+                return [], []
 
-# ── Price Widgets ─────────────────────────────────────────────
-PGUIDE_HTML = """
-<div class="pguide">
-  <div class="ph">💡 الأسعار الإرشادية (ريال / متر)</div>
-  <div class="pr"><span class="pn">أنابيب Ø 1400 ملم</span><span class="pb">4,004 ﷼</span></div>
-  <div class="pr"><span class="pn">قناة صندوقية (1.8×1.4)م</span><span class="pb">9,336 ﷼</span></div>
-  <div class="pr"><span class="pn">قناة مفتوحة (12×1.5)م</span><span class="pb">13,052 ﷼</span></div>
-  <div style="font-size:.74rem;color:#8d6e63;margin-top:6px">
-  ⚠️ أسعار إرشادية تقريبية — تختلف حسب الموقع والمواصفات
-  </div>
-</div>"""
+            # قراءة ملف .prj لمعرفة نظام الإحداثيات
+            prj_path = shp.replace(".shp", ".prj")
+            crs_wkt = None
+            epsg = None
+            if os.path.exists(prj_path):
+                with open(prj_path, "r", errors="ignore") as pf:
+                    crs_wkt = pf.read().strip()
+                # محاولة استخراج EPSG من WKT
+                try:
+                    from pyproj import CRS
+                    crs_obj = CRS.from_wkt(crs_wkt)
+                    epsg_auth = crs_obj.to_epsg()
+                    if epsg_auth:
+                        epsg = epsg_auth
+                except:
+                    pass
 
-def quick_btns(prefix):
-    cols = st.columns(3)
-    labels = ["أنابيب","صندوقية","مفتوحة"]
-    for i,(col,(name,price)) in enumerate(zip(cols,PRICES)):
-        if col.button(f"{labels[i]}\n{price:,.0f}﷼", key=f"{prefix}q{i}", help=name):
-            st.session_state[f"{prefix}p"] = price
+            sf = shapefile.Reader(shp)
+            fnames = [f[0] for f in sf.fields[1:]]
+            feats, all_c = [], []
+            projected_detected = False
 
-def price_inp(prefix, key):
-    return st.number_input("💲 السعر / متر (ريال)",
-        min_value=0.0, value=float(st.session_state.get(f"{prefix}p",100)),
-        step=10.0, format="%.0f", key=key)
+            for i, sr in enumerate(sf.shapeRecords()):
+                coords = [[float(p[0]), float(p[1])] for p in sr.shape.points if len(p) >= 2]
+                if len(coords) < 2:
+                    continue
+                props = dict(zip(fnames, sr.record))
 
-# ══════════════════════════════════════════════════════════════
-#  SIDEBAR
-# ══════════════════════════════════════════════════════════════
+                # اكتشاف وتحويل الإحداثيات المسقطة
+                if is_projected(coords):
+                    if not projected_detected:
+                        projected_detected = True
+                        if epsg:
+                            st.info(f"📐 تم اكتشاف نظام إحداثيات مسقط (EPSG:{epsg}) — سيتم التحويل إلى WGS84")
+                        else:
+                            st.info("📐 تم اكتشاف نظام إحداثيات مسقط — سيتم التحويل إلى WGS84 (UTM 37N افتراضي)")
+                    # حساب الطول قبل التحويل (أدق)
+                    length = round(length_m_projected(coords), 2)
+                    coords = convert_projected_to_wgs84(coords, crs_wkt=crs_wkt, epsg=epsg)
+                else:
+                    length = round(length_m_wgs(coords), 2)
+
+                feats.append({"i": i, "lbl": f"خط #{i}", "len": length, "coords": coords, "props": props})
+                all_c.extend(coords)
+            return feats, all_c
+    except Exception as e:
+        st.error(f"خطأ: {e}")
+        return [], []
+
+# ── توليد خريطة ثابتة Static Map ──
+def get_static_map_url(coords_list, width=600, height=400):
+    """إنشاء رابط خريطة ثابتة من OpenStreetMap عبر Staticmap"""
+    if not coords_list:
+        return None
+    # استخدام staticmap API
+    path_str = "|".join(f"{lat},{lon}" for lon, lat in coords_list)
+    # نستخدم openstreetmap tiles مع geoapify static maps
+    lats = [c[1] for c in coords_list]
+    lons = [c[0] for c in coords_list]
+    min_lat, max_lat = min(lats), max(lats)
+    min_lon, max_lon = min(lons), max(lons)
+    center_lat = (min_lat + max_lat) / 2
+    center_lon = (min_lon + max_lon) / 2
+    return center_lat, center_lon
+
+def fetch_osm_tile(lat, lon, zoom=14):
+    """تحميل tile من OpenStreetMap"""
+    n = 2**zoom
+    x_tile = int((lon + 180) / 360 * n)
+    y_tile = int((1 - math.log(math.tan(math.radians(lat)) + 1/math.cos(math.radians(lat))) / math.pi) / 2 * n)
+    url = f"https://tile.openstreetmap.org/{zoom}/{x_tile}/{y_tile}.png"
+    return url, x_tile, y_tile
+
+def generate_pdf_report(sfeats, stot, cost, pr1):
+    """توليد تقرير PDF مع خريطة ثابتة"""
+    buf = BytesIO()
+
+    # ── إنشاء خريطة Folium وتحويلها لصورة ──
+    map_img_bytes = None
+    try:
+        import selenium
+        has_selenium = True
+    except:
+        has_selenium = False
+
+    # إنشاء خريطة folium وحفظها كـ HTML ثم PNG
+    all_coords = []
+    for f in sfeats:
+        all_coords.extend(f["coords"])
+
+    if all_coords:
+        clat, clon = center(all_coords)
+    else:
+        clat, clon = RLAT, RLON
+
+    # ── بناء صورة الخريطة باستخدام staticmap ──
+    try:
+        from staticmap import StaticMap, Line, CircleMarker
+        m = StaticMap(600, 350, url_template="https://tile.openstreetmap.org/{z}/{x}/{y}.png")
+        COLORS = ["#e74c3c", "#e67e22", "#2ecc71", "#9b59b6", "#1abc9c",
+                  "#f39c12", "#d35400", "#c0392b", "#16a085", "#8e44ad"]
+        for idx, f in enumerate(sfeats):
+            line_coords = [(c[0], c[1]) for c in f["coords"]]
+            color = COLORS[idx % len(COLORS)]
+            line = Line(line_coords, color, 4)
+            m.add_line(line)
+            # علامة بداية
+            if f["coords"]:
+                mid_idx = len(f["coords"]) // 2
+                mc_pt = CircleMarker((f["coords"][mid_idx][0], f["coords"][mid_idx][1]), color, 8)
+                m.add_marker(mc_pt)
+        map_img = m.render(zoom=14)
+        img_buf = BytesIO()
+        map_img.save(img_buf, format="PNG")
+        map_img_bytes = img_buf.getvalue()
+    except Exception as e:
+        # Fallback: بناء خريطة HTML وحفظها
+        map_img_bytes = None
+
+    # ── بناء PDF بـ ReportLab ──
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            rightMargin=1.5*cm, leftMargin=1.5*cm,
+                            topMargin=1.5*cm, bottomMargin=1.5*cm)
+
+    styles = getSampleStyleSheet()
+    # ستايلات مخصصة (بدون خط عربي مدمج — نستخدم Helvetica مع النصوص الإنجليزية)
+    title_style = ParagraphStyle("title", parent=styles["Title"],
+                                 fontSize=16, textColor=colors.HexColor("#0a2a5e"),
+                                 alignment=TA_CENTER, spaceAfter=8)
+    sub_style = ParagraphStyle("sub", parent=styles["Normal"],
+                               fontSize=10, textColor=colors.HexColor("#1a5fa8"),
+                               alignment=TA_CENTER, spaceAfter=14)
+    label_style = ParagraphStyle("label", parent=styles["Normal"],
+                                 fontSize=9, textColor=colors.HexColor("#555555"),
+                                 alignment=TA_LEFT)
+    result_style = ParagraphStyle("result", parent=styles["Normal"],
+                                  fontSize=12, textColor=colors.HexColor("#0a2a5e"),
+                                  alignment=TA_CENTER, spaceAfter=6)
+
+    story = []
+
+    # ── رأس التقرير ──
+    story.append(Paragraph("Flood Network Cost Report", title_style))
+    story.append(Paragraph("Eng. Ahmed Adam | Flood Drainage Networks Calculator 2025", sub_style))
+    story.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor("#1a5fa8"), spaceAfter=12))
+
+    # ── ملخص النتائج ──
+    summary_data = [
+        ["Parameter", "Value"],
+        ["Number of Lines", f"{len(sfeats)}"],
+        ["Total Length (m)", f"{stot:,.2f} m"],
+        ["Total Length (km)", f"{stot/1000:.3f} km"],
+        ["Price per Meter", f"{pr1:,.2f} SAR"],
+        ["TOTAL COST", f"{cost:,.2f} SAR"],
+        ["Total Cost (Millions)", f"{cost/1e6:.3f} M SAR"],
+    ]
+    summary_table = Table(summary_data, colWidths=[7*cm, 10*cm])
+    summary_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0a2a5e")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("FONTSIZE", (0, -1), (-1, -1), 12),
+        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("BACKGROUND", (0, -2), (-1, -1), colors.HexColor("#eaf4ff")),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#1a5fa8")),
+        ("TEXTCOLOR", (0, -1), (-1, -1), colors.white),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -3), [colors.white, colors.HexColor("#f0f7ff")]),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d0e4f7")),
+        ("ROWHEIGHT", (0, 0), (-1, -1), 22),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    story.append(summary_table)
+    story.append(Spacer(1, 14))
+
+    # ── جدول الخطوط ──
+    story.append(Paragraph("Line Details:", ParagraphStyle("h2", parent=styles["Heading2"],
+                                                            fontSize=12, textColor=colors.HexColor("#0a2a5e"),
+                                                            spaceAfter=6)))
+    line_data = [["Index", "Line Name", "Length (m)", "Length (km)", "Cost (SAR)"]]
+    for f in sfeats:
+        lc = f["len"] * pr1
+        line_data.append([str(f["i"]), f["lbl"],
+                          f"{f['len']:,.2f}", f"{f['len']/1000:.4f}", f"{lc:,.2f}"])
+    line_table = Table(line_data, colWidths=[2*cm, 4*cm, 4*cm, 4*cm, 5*cm])
+    line_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a5fa8")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f0f7ff")]),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d0e4f7")),
+        ("ROWHEIGHT", (0, 0), (-1, -1), 18),
+    ]))
+    story.append(line_table)
+    story.append(Spacer(1, 14))
+
+    # ── صورة الخريطة ──
+    if map_img_bytes:
+        story.append(Paragraph("Location Map (OpenStreetMap):", ParagraphStyle("h2", parent=styles["Heading2"],
+                                                                                 fontSize=12, textColor=colors.HexColor("#0a2a5e"),
+                                                                                 spaceAfter=6)))
+        img_stream = BytesIO(map_img_bytes)
+        rl_img = RLImage(img_stream, width=17*cm, height=9.5*cm)
+        story.append(rl_img)
+        story.append(Spacer(1, 8))
+        story.append(Paragraph("Map tiles © OpenStreetMap contributors",
+                                ParagraphStyle("caption", parent=styles["Normal"],
+                                               fontSize=7, textColor=colors.grey, alignment=TA_CENTER)))
+    else:
+        # إنشاء خريطة HTML كبديل
+        story.append(Paragraph("Map could not be rendered (staticmap not available).",
+                                ParagraphStyle("note", parent=styles["Normal"],
+                                               fontSize=9, textColor=colors.orange, alignment=TA_CENTER)))
+        # إضافة إحداثيات كبديل
+        coords_info = []
+        for f in sfeats:
+            if f["coords"]:
+                lat, lon = center(f["coords"])
+                coords_info.append(f"Line #{f['i']}: lat={lat:.5f}, lon={lon:.5f}")
+        if coords_info:
+            story.append(Paragraph("Line Centers: " + " | ".join(coords_info),
+                                    ParagraphStyle("coords", parent=styles["Normal"],
+                                                   fontSize=8, textColor=colors.HexColor("#555"))))
+
+    story.append(Spacer(1, 10))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#1a5fa8"), spaceAfter=6))
+    story.append(Paragraph("Eng. Ahmed Adam | Flood Drainage Networks © 2025",
+                            ParagraphStyle("footer", parent=styles["Normal"],
+                                           fontSize=8, textColor=colors.HexColor("#888"), alignment=TA_CENTER)))
+
+    doc.build(story)
+    return buf.getvalue()
+
+# ── Session ──
+for k, v in [("feats", []), ("ac", []), ("cost_result", None), ("sel_indices", [])]:
+    if k not in st.session_state:
+        st.session_state[k] = v
+
+# ── Sidebar ──
 with st.sidebar:
-    st.markdown('<div class="stitle">📁 رفع الملف</div>', unsafe_allow_html=True)
-    uploaded = st.file_uploader("GeoJSON أو ZIP (Shapefile)",
-                                type=["geojson","json","zip"])
-    st.markdown("---")
-    st.markdown("""<div class="ibox">
-    <b>💡 طريقة الاستخدام:</b><br>
-    ① ارفع ملف GeoJSON أو ZIP<br>
-    ② استعرض الخريطة<br>
-    ③ اختر الخطوط واحسب التكلفة<br>
-    ④ أو ارسم خطاً جديداً
-    </div>""", unsafe_allow_html=True)
-    st.markdown(PGUIDE_HTML, unsafe_allow_html=True)
-    st.markdown("""
-    <div class="sig">
-      <div style="font-size:2rem">👷</div>
-      <div class="sn">Eng: Ahmed Adam</div>
-      <div class="ss">🌊 نظام تحليل شبكات السيول</div>
-      <hr>
-      <div class="ss">GIS Flood Network · v6.0 · © 2025</div>
-    </div>""", unsafe_allow_html=True)
+    st.markdown('<div style="background:linear-gradient(135deg,#0a2a5e,#1a5fa8);color:#fff;padding:14px 18px;text-align:center;margin:-1px -1px 14px"><b style="font-size:1rem">🌊 حاسبة شبكات السيول</b><br><small style="color:#b8d9f8">Eng. Ahmed Adam</small></div>', unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════
-#  HEADER
-# ══════════════════════════════════════════════════════════════
+    st.markdown("**📂 رفع بيانات الشبكة**")
+    up = st.file_uploader("GeoJSON أو Shapefile (zip)", type=["geojson", "json", "zip"], label_visibility="collapsed")
+    if up:
+        raw = up.read()
+        ext = up.name.lower().rsplit(".", 1)[-1]
+        with st.spinner("جاري التحميل..."):
+            if ext in ("geojson", "json"):
+                f, c = load_geojson(raw.decode("utf-8", "ignore"))
+            else:
+                f, c = load_shp(raw)
+        if f:
+            st.session_state.feats = f
+            st.session_state.ac = c
+            st.session_state.sel_indices = []
+            st.session_state.cost_result = None
+            st.success(f"✅ {len(f)} خط")
+        else:
+            st.warning("لم تُوجد خطوط صالحة في الملف")
+
+    if st.session_state.feats:
+        tl = sum(x["len"] for x in st.session_state.feats)
+        st.caption(f"📊 {len(st.session_state.feats)} خط — إجمالي {tl/1000:.2f} كم")
+
+    st.markdown("---")
+    st.markdown("**💲 أسعار إرشادية**")
+    st.markdown("""
+<div class="pc"><b>🔵 أنابيب — قطر 1400 ملم</b><br><span>4,004 ريال / متر</span></div>
+<div class="pc"><b>🟠 قناة صندوقية — 1.8 × 1.4 م</b><br><span>9,336 ريال / متر</span></div>
+<div class="pc"><b>🟢 قناة مفتوحة — عرض 12م / عمق 1.5م</b><br><span>13,052 ريال / متر</span></div>
+<div class="sig"><b>Eng: Ahmed Adam</b><br>شبكات تصريف السيول © 2025</div>
+""", unsafe_allow_html=True)
+
+# ── Header ──
 st.markdown("""
 <div class="hdr">
-  <h1>🌊 نظام تحليل شبكات السيول</h1>
-  <p>حساب الأطوال · تقدير التكاليف · نتائج سريعة</p>
+  <div><h1>🌊 حاسبة تكلفة شبكات تصريف السيول</h1>
+  <p>تحليل الشبكات · حساب الأطوال · تقدير التكاليف</p></div>
+  <div class="bdg">Eng: Ahmed Adam</div>
 </div>""", unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════
-#  NO FILE — Welcome
-# ══════════════════════════════════════════════════════════════
-if not uploaded:
-    c1,c2 = st.columns([1,2])
-    with c1:
-        st.markdown("""
-        <div style="background:#fff;border-radius:14px;padding:28px 20px;
-                    box-shadow:0 2px 12px rgba(0,0,0,.08)">
-          <div style="font-size:2.8rem;text-align:center">🗂️</div>
-          <h3 style="color:#1a3a5c;text-align:center;font-size:1.1rem;margin:10px 0 8px">
-            ارفع الملف للبدء</h3>
-          <div class="ibox">
-          ارفع <b>GeoJSON</b> مباشرة<br>
-          أو <b>ZIP</b> يحتوي Shapefile<br>
-          من الشريط الجانبي
-          </div>
-          <div style="background:#f8fafc;border-radius:9px;padding:11px;
-                      font-size:.83rem;color:#64748b;border-right:3px solid #0d6efd;margin-top:10px">
-          📌 <b>SHP → ZIP:</b><br>
-          اختر المجلد ← كليك يمين ← ضغط
-          </div>
-        </div>""", unsafe_allow_html=True)
-    with c2:
-        st_folium(make_map(zoom=11), width="100%", height=420,
-                  returned_objects=[], key="m0")
+tab1, tab2, tab3 = st.tabs(["🗺️ خطوط الشبكة", "✏️ رسم خط جديد", "📊 جدول البيانات"])
 
-# ══════════════════════════════════════════════════════════════
-#  FILE LOADED
-# ══════════════════════════════════════════════════════════════
-else:
-    raw = uploaded.read()
-    with st.spinner("⏳ جاري قراءة البيانات..."):
-        df = load_file(raw, uploaded.name)
+# ══ TAB 1 ══
+with tab1:
+    feats = st.session_state.feats
+    if not feats:
+        st.markdown('<div class="ib">⬅️ ارفع ملف GeoJSON أو Shapefile من القائمة الجانبية للبدء.</div>', unsafe_allow_html=True)
 
-    if df is None:
-        st.stop()
+    if feats:
+        tl = sum(x["len"] for x in feats)
+        c1, c2, c3 = st.columns(3)
+        c1.markdown(f'<div class="mc"><div class="v">{len(feats):,}</div><div class="l">عدد الخطوط</div></div>', unsafe_allow_html=True)
+        c2.markdown(f'<div class="mc"><div class="v">{tl/1000:,.2f}</div><div class="l">إجمالي الطول (كم)</div></div>', unsafe_allow_html=True)
+        c3.markdown(f'<div class="mc"><div class="v">{tl:,.0f}</div><div class="l">إجمالي الطول (م)</div></div>', unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
 
-    total_m = float(df["length_m"].sum())
-    n       = len(df)
+    # ── الخريطة ──
+    mc = list(center(st.session_state.ac)) if st.session_state.ac else [RLAT, RLON]
+    m1 = folium.Map(location=mc, zoom_start=14, tiles="OpenStreetMap", prefer_canvas=True)
+    folium.TileLayer(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        attr="Esri", name="صورة فضائية").add_to(m1)
+    folium.LayerControl(collapsed=True).add_to(m1)
 
-    # Stats
-    c1,c2,c3,c4 = st.columns(4)
-    c1.markdown(f'<div class="card"><div class="lb">عدد الخطوط</div>'
-                f'<div class="vl">{n:,}</div><div class="un">خط</div></div>',
-                unsafe_allow_html=True)
-    c2.markdown(f'<div class="card g"><div class="lb">الطول الإجمالي</div>'
-                f'<div class="vl">{total_m/1000:.2f}</div>'
-                f'<div class="un">كم ({total_m:,.0f} م)</div></div>',
-                unsafe_allow_html=True)
-    c3.markdown(f'<div class="card"><div class="lb">متوسط الطول</div>'
-                f'<div class="vl">{df["length_m"].mean():.0f}</div>'
-                f'<div class="un">متر</div></div>', unsafe_allow_html=True)
-    c4.markdown(f'<div class="card o"><div class="lb">أطول خط</div>'
-                f'<div class="vl">{df["length_m"].max():,.0f}</div>'
-                f'<div class="un">متر</div></div>', unsafe_allow_html=True)
+    selected_set = set(st.session_state.sel_indices)
 
-    t1,t2,t3,t4 = st.tabs([
-        "🗺️ الخريطة","💰 حساب التكلفة","✏️ رسم خط جديد","📊 الجدول"])
+    for f in feats:
+        cll = [(c[1], c[0]) for c in f["coords"]]
+        is_selected = f["i"] in selected_set
+        line_color = "#e74c3c" if is_selected else "#1a5fa8"
+        line_weight = 5 if is_selected else 3
 
-    # ── Tab 1: Map ────────────────────────────────────────────
-    with t1:
-        st.markdown('<div class="stitle">🗺️ خريطة شبكة السيول</div>',
-                    unsafe_allow_html=True)
-        st.markdown('<div class="ibox">مرّر على أي خط لعرض رقمه وطوله · '
-                    'غيّر نوع الخريطة من أعلى اليمين</div>', unsafe_allow_html=True)
-        st_folium(make_map(df), width="100%", height=530,
-                  returned_objects=[], key="m1")
+        # Popup مبسط: فقط الطول والـ Index
+        popup_html = f"""<div dir='rtl' style='font-family:Cairo,sans-serif;font-size:13px;min-width:160px'>
+<b style='color:#1a5fa8;font-size:15px'>خط #{f['i']}</b><br>
+<b>الطول:</b> {f['len']:,.1f} م<br>
+<small style='color:#888'>({f['len']/1000:.3f} كم)</small>
+</div>"""
 
-    # ── Tab 2: Cost ───────────────────────────────────────────
-    with t2:
-        st.markdown('<div class="stitle">💰 حساب تكلفة خطوط من الشبكة</div>',
-                    unsafe_allow_html=True)
-        cc, cm = st.columns([2,3])
+        # Label (DivIcon) في منتصف الخط
+        if cll:
+            mid = cll[len(cll)//2]
+            folium.Marker(
+                location=mid,
+                icon=folium.DivIcon(
+                    html=f'<div style="background:#1a5fa8;color:#fff;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:bold;font-family:Cairo,sans-serif;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.3)">{f["i"]}</div>',
+                    icon_size=(36, 20),
+                    icon_anchor=(18, 10)
+                )
+            ).add_to(m1)
 
-        with cc:
-            st.markdown('<div class="ibox">① اختر الخطوط<br>② اختر السعر أو أدخله<br>'
-                        '③ اضغط احسب</div>', unsafe_allow_html=True)
-            st.markdown(PGUIDE_HTML, unsafe_allow_html=True)
-            quick_btns("t2")
+        folium.PolyLine(cll, color=line_color, weight=line_weight, opacity=0.92,
+                        tooltip=f"خط #{f['i']} | {f['len']:,.0f} م",
+                        popup=folium.Popup(popup_html, max_width=220)).add_to(m1)
+
+    st_folium(m1, width="100%", height=420, returned_objects=[], key="m1")
+
+    if feats:
+        st.markdown("### 📌 اختيار الخطوط")
+        st.markdown('<div class="ib">💡 اختر خطاً أو أكثر — رقم الخط مطابق لـ Index في الجدول</div>', unsafe_allow_html=True)
+
+        # ── Select All / Clear All ──
+        ca1, ca2, ca3 = st.columns([2, 2, 4])
+        with ca1:
+            if st.button("✅ تحديد الكل", key="sel_all"):
+                st.session_state.sel_indices = [f["i"] for f in feats]
+                st.rerun()
+        with ca2:
+            if st.button("❌ إلغاء الكل", key="desel_all"):
+                st.session_state.sel_indices = []
+                st.rerun()
+
+        # ── خيار Checkboxes أو Multiselect ──
+        sel_mode = st.radio("طريقة الاختيار:", ["🔍 بحث (Multiselect)", "☑️ Checkboxes"],
+                             horizontal=True, key="sel_mode")
+
+        if sel_mode == "🔍 بحث (Multiselect)":
+            opts = [f"خط #{f['i']}  ——  {f['len']:,.1f} م" for f in feats]
+            # تحويل sel_indices الحالية إلى قائمة opts
+            current_opts = [opts[f["i"]] for f in feats if f["i"] in set(st.session_state.sel_indices) and f["i"] < len(opts)]
+            sel = st.multiselect("ابحث واختر:", opts,
+                                  default=current_opts,
+                                  placeholder="اكتب رقم الخط أو اختر...", key="sel_multi")
+            new_indices = []
+            for s in sel:
+                idx = opts.index(s)
+                new_indices.append(feats[idx]["i"])
+            if set(new_indices) != set(st.session_state.sel_indices):
+                st.session_state.sel_indices = new_indices
+                st.rerun()
+
+        else:  # Checkboxes
             st.markdown("---")
+            # شبكة checkboxes بعمودين
+            cols_per_row = 2
+            feat_chunks = [feats[i:i+cols_per_row] for i in range(0, len(feats), cols_per_row)]
+            new_indices = list(st.session_state.sel_indices)
+            changed = False
+            for chunk in feat_chunks:
+                row_cols = st.columns(cols_per_row)
+                for ci, f in enumerate(chunk):
+                    is_checked = f["i"] in set(new_indices)
+                    checked = row_cols[ci].checkbox(
+                        f"خط #{f['i']}  ({f['len']:,.0f} م)",
+                        value=is_checked,
+                        key=f"chk_{f['i']}"
+                    )
+                    if checked and f["i"] not in new_indices:
+                        new_indices.append(f["i"])
+                        changed = True
+                    elif not checked and f["i"] in new_indices:
+                        new_indices.remove(f["i"])
+                        changed = True
+            if changed:
+                st.session_state.sel_indices = new_indices
 
-            lc = label_col(df)
-            opts = ([f"{i} | {str(r[lc])[:25]} ({r['length_m']:,.0f}م)" for i,r in df.iterrows()]
-                    if lc else [f"خط {i} ({r['length_m']:,.0f}م)" for i,r in df.iterrows()])
+        # ── الخطوط المختارة ──
+        sfeats = [f for f in feats if f["i"] in set(st.session_state.sel_indices)]
+        stot = sum(x["len"] for x in sfeats)
 
-            sel_lbl = st.multiselect("اختر الخطوط:", opts,
-                                     placeholder="ابحث أو اختر...", key="ms2")
-            sel_idx = []
-            for lb in sel_lbl:
-                try:
-                    sel_idx.append(int(lb.split("|")[0].strip() if "|" in lb
-                                       else lb.replace("خط ","").split(" ")[0]))
-                except: pass
+        if sfeats:
+            c1, c2 = st.columns(2)
+            c1.markdown(f'<div class="mc"><div class="v">{len(sfeats)}</div><div class="l">خطوط مختارة</div></div>', unsafe_allow_html=True)
+            c2.markdown(f'<div class="mc"><div class="v">{stot:,.1f} م</div><div class="l">مجموع الأطوال</div></div>', unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
 
-            if sel_idx:
-                ts = float(df.loc[sel_idx,"length_m"].sum())
-                st.markdown(f'<div class="card g">'
-                            f'<div class="lb">✅ {len(sel_idx)} خط مختار</div>'
-                            f'<div class="vl">{ts:,.0f}</div>'
-                            f'<div class="un">متر = {ts/1000:.2f} كم</div></div>',
-                            unsafe_allow_html=True)
-            else:
-                ts = 0.0
-
-            p2 = price_inp("t2","pi2")
-            if st.button("🧮 احسب التكلفة", key="cb2"):
-                if ts > 0:
-                    cost = ts * p2
-                    detail = ""
-                    if len(sel_idx) > 1:
-                        hr = '<hr style="border:0;border-top:1px solid #a5d6a7;margin:6px 0">'
-                        detail = hr + "".join(
-                            f"• خط {i}: {df.loc[i,'length_m']:,.0f}م × {p2:,.0f} = "
-                            f"{df.loc[i,'length_m']*p2:,.0f} ﷼<br>"
-                            for i in sel_idx)
-                    st.markdown(f'<div class="result">'
-                                f'<div class="rv">{cost:,.0f} ﷼</div>'
-                                f'<div class="rs">{ts:,.0f}م × {p2:,.0f} ﷼/م'
-                                f' | {len(sel_idx)} خط{detail}</div></div>',
-                                unsafe_allow_html=True)
+        st.markdown("### 💰 حساب التكلفة")
+        cp, cb = st.columns([3, 1])
+        with cp:
+            pr1 = st.number_input("سعر المتر (ريال):", min_value=0.0, value=4004.0,
+                                   step=100.0, format="%.2f", key="pr1",
+                                   help="إرشادية: أنابيب 4,004 | صندوقية 9,336 | مفتوحة 13,052")
+        with cb:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("احسب 💰", key="b1"):
+                if not sfeats:
+                    st.warning("اختر خطاً أولاً")
                 else:
-                    st.warning("⚠️ اختر خطاً واحداً على الأقل")
+                    cost = stot * pr1
+                    st.session_state.cost_result = {
+                        "sfeats": sfeats, "stot": stot, "cost": cost, "pr1": pr1
+                    }
 
-        with cm:
-            st_folium(make_map(df, sel=sel_idx), width="100%", height=540,
-                      returned_objects=[], key="m2")
+        # ── نتيجة الحساب + PDF ──
+        if st.session_state.cost_result:
+            cr = st.session_state.cost_result
+            info = " | ".join(f"خط #{f['i']} ({f['len']:,.0f}م)" for f in cr["sfeats"])
+            st.markdown(f"""<div class="res">
+{info}<br>📏 مجموع الأطوال: <b>{cr['stot']:,.2f} م</b> ({cr['stot']/1000:.3f} كم)<br>
+💲 سعر المتر: <b>{cr['pr1']:,.2f} ريال</b><br>━━━━━━━━━━━━━━━━━<br>
+💰 التكلفة الإجمالية: <b style="font-size:1.25rem">{cr['cost']:,.2f} ريال</b><br>
+≈ <b>{cr['cost']/1e6:.3f} مليون ريال</b></div>""", unsafe_allow_html=True)
 
-    # ── Tab 3: Draw ───────────────────────────────────────────
-    with t3:
-        st.markdown('<div class="stitle">✏️ ارسم خطاً جديداً</div>',
-                    unsafe_allow_html=True)
-        dm, dc = st.columns([3,2])
+            st.markdown("<br>", unsafe_allow_html=True)
+            pdf_col1, pdf_col2 = st.columns(2)
+            with pdf_col1:
+                if st.button("📄 توليد تقرير PDF", key="gen_pdf"):
+                    with st.spinner("جاري إنشاء التقرير..."):
+                        try:
+                            pdf_bytes = generate_pdf_report(
+                                cr["sfeats"], cr["stot"], cr["cost"], cr["pr1"]
+                            )
+                            st.session_state.pdf_bytes = pdf_bytes
+                            st.success("✅ التقرير جاهز للتحميل!")
+                        except Exception as e:
+                            st.error(f"خطأ في إنشاء PDF: {e}")
 
-        with dm:
-            st.markdown('<div class="ibox">'
-                        '① انقر 🖊 في أعلى يسار الخريطة<br>'
-                        '② انقر لإضافة نقاط · انقر مرتين للإنهاء<br>'
-                        '③ يظهر الطول تلقائياً</div>', unsafe_allow_html=True)
-            md = st_folium(make_map(df, draw=True), width="100%", height=500,
-                           returned_objects=["all_drawings"], key="m3")
+            with pdf_col2:
+                if hasattr(st.session_state, "pdf_bytes") and st.session_state.pdf_bytes:
+                    st.download_button(
+                        label="⬇️ تحميل PDF",
+                        data=st.session_state.pdf_bytes,
+                        file_name="flood_network_cost_report.pdf",
+                        mime="application/pdf",
+                        key="dl_pdf"
+                    )
 
-        with dc:
-            st.markdown(PGUIDE_HTML, unsafe_allow_html=True)
-            quick_btns("t3")
-            st.markdown("---")
+# ══ TAB 2 ══
+with tab2:
+    st.markdown("### ✏️ ارسم خطاً على الخريطة")
+    st.markdown("""<div class="ib" style="text-align:right">
+<b>📌 خطوات الرسم:</b><br>
+<b>١.</b> انقر أيقونة <b>رسم الخط</b> في يسار الخريطة<br>
+<b>٢.</b> انقر لتحديد نقاط المسار<br>
+<b>٣.</b> انقر <b>مرتين</b> لإنهاء الرسم<br>
+<b>٤.</b> أدخل السعر ثم اضغط احسب
+</div>""", unsafe_allow_html=True)
 
-            drw = [d for d in ((md or {}).get("all_drawings") or [])
-                   if d.get("geometry",{}).get("type")=="LineString"
-                   and len(d["geometry"].get("coordinates",[]))>=2]
+    mc2 = list(center(st.session_state.ac)) if st.session_state.ac else [RLAT, RLON]
+    m2 = folium.Map(location=mc2, zoom_start=14, tiles="OpenStreetMap", prefer_canvas=True)
+    folium.TileLayer(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        attr="Esri", name="صورة فضائية").add_to(m2)
 
-            if drw:
-                lens = [haversine(d["geometry"]["coordinates"]) for d in drw]
-                dt   = sum(lens)
-                st.markdown(f'<div class="card g">'
-                            f'<div class="lb">✏️ {len(drw)} خط مرسوم</div>'
-                            f'<div class="vl">{dt:,.0f}</div>'
-                            f'<div class="un">متر = {dt/1000:.2f} كم</div></div>',
-                            unsafe_allow_html=True)
-                if len(lens)>1:
-                    with st.expander("تفاصيل الخطوط المرسومة"):
-                        for i,l in enumerate(lens,1):
-                            st.markdown(f"• خط {i}: **{l:,.0f} م**")
-            else:
-                dt = 0.0
-                st.markdown('<div style="text-align:center;padding:24px;color:#94a3b8">'
-                            '<div style="font-size:2rem">✏️</div>'
-                            '<p>ارسم خطاً لظهور طوله</p></div>',
-                            unsafe_allow_html=True)
+    # خطوط الملف بلون واضح في تبويب الرسم
+    for f in st.session_state.feats:
+        cll2 = [(c[1], c[0]) for c in f["coords"]]
+        folium.PolyLine(cll2, color="#1a5fa8", weight=3, opacity=0.85,
+                        tooltip=f"خط #{f['i']}").add_to(m2)
+        # Labels في تبويب الرسم أيضاً
+        if cll2:
+            mid2 = cll2[len(cll2)//2]
+            folium.Marker(
+                location=mid2,
+                icon=folium.DivIcon(
+                    html=f'<div style="background:#1a5fa8;color:#fff;padding:1px 5px;border-radius:8px;font-size:9px;font-weight:bold;opacity:0.8">{f["i"]}</div>',
+                    icon_size=(30, 16),
+                    icon_anchor=(15, 8)
+                )
+            ).add_to(m2)
 
-            p3 = price_inp("t3","pi3")
-            if st.button("🧮 احسب التكلفة", key="cb3"):
-                if dt > 0:
-                    st.markdown(f'<div class="result">'
-                                f'<div class="rv">{dt*p3:,.0f} ﷼</div>'
-                                f'<div class="rs">{dt:,.0f}م × {p3:,.0f} ﷼/م'
-                                f' | {len(drw)} خط</div></div>',
-                                unsafe_allow_html=True)
+    Draw(draw_options={
+        "polyline": {"shapeOptions": {"color": "#e74c3c", "weight": 4, "opacity": .9}},
+        "polygon": False, "circle": False, "rectangle": False,
+        "circlemarker": False, "marker": False},
+        edit_options={"edit": True, "remove": True}).add_to(m2)
+    folium.LayerControl(collapsed=True).add_to(m2)
+
+    md2 = st_folium(m2, width="100%", height=460, key="m2")
+
+    dlen = 0.0
+    if md2 and md2.get("all_drawings"):
+        for drw in md2["all_drawings"]:
+            g = drw.get("geometry") or {}
+            if g.get("type") == "LineString":
+                c = g.get("coordinates", [])
+                if len(c) >= 2:
+                    dlen += length_m_wgs(c)
+
+    if dlen > 0:
+        c1, c2 = st.columns(2)
+        c1.markdown(f'<div class="mc"><div class="v">{dlen:,.2f}</div><div class="l">الطول (م)</div></div>', unsafe_allow_html=True)
+        c2.markdown(f'<div class="mc"><div class="v">{dlen/1000:.3f}</div><div class="l">الطول (كم)</div></div>', unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        cp2, cb2 = st.columns([3, 1])
+        with cp2:
+            pr2 = st.number_input("سعر المتر (ريال):", min_value=0.0, value=4004.0,
+                                   step=100.0, format="%.2f", key="pr2",
+                                   help="إرشادية: أنابيب 4,004 | صندوقية 9,336 | مفتوحة 13,052")
+        with cb2:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("احسب 💰", key="b2"):
+                cost2 = dlen * pr2
+                st.markdown(f"""<div class="res">
+✏️ خط مرسوم يدوياً<br>📏 الطول: <b>{dlen:,.2f} م</b> ({dlen/1000:.3f} كم)<br>
+💲 سعر المتر: <b>{pr2:,.2f} ريال</b><br>━━━━━━━━━━━━━━━━━<br>
+💰 التكلفة: <b style="font-size:1.25rem">{cost2:,.2f} ريال</b><br>
+≈ <b>{cost2/1e6:.3f} مليون ريال</b></div>""", unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="ib">☝️ استخدم أداة الرسم في يسار الخريطة لرسم خط جديد.</div>', unsafe_allow_html=True)
+
+# ══ TAB 3 ══
+with tab3:
+    feats = st.session_state.feats
+    if not feats:
+        st.markdown('<div class="ib">⬅️ ارفع ملف من القائمة الجانبية لعرض الجدول.</div>', unsafe_allow_html=True)
+    else:
+        st.markdown(f"### 📋 بيانات الشبكة — {len(feats)} خط")
+
+        # ── بحث بالـ Index ──
+        search_idx = st.text_input("🔍 بحث برقم الخط (Index):", placeholder="أدخل رقم الخط مثل: 0 أو 5", key="search_idx")
+
+        rows = []
+        for f in feats:
+            r = {"رقم الخط (Index)": f["i"], "الطول (م)": f["len"], "الطول (كم)": round(f["len"]/1000, 4)}
+            # إضافة جميع الخصائص
+            r.update({str(k): v for k, v in f["props"].items()})
+            rows.append(r)
+
+        df = pd.DataFrame(rows)
+
+        # تطبيق الفلتر
+        if search_idx.strip():
+            try:
+                idx_val = int(search_idx.strip())
+                df_filtered = df[df["رقم الخط (Index)"] == idx_val]
+                if df_filtered.empty:
+                    st.warning(f"لا يوجد خط بالرقم {idx_val}")
                 else:
-                    st.warning("⚠️ ارسم خطاً أولاً")
+                    st.dataframe(df_filtered, use_container_width=True, height=200)
+            except ValueError:
+                st.warning("يرجى إدخال رقم صحيح")
+        else:
+            st.dataframe(df, use_container_width=True, height=500)
 
-    # ── Tab 4: Table ─────────────────────────────────────────
-    with t4:
-        st.markdown('<div class="stitle">📊 جدول البيانات</div>',
-                    unsafe_allow_html=True)
-        st.markdown(f'<div class="card g" style="display:inline-block;min-width:260px">'
-                    f'<div class="lb">مجموع الأطوال</div>'
-                    f'<div class="vl">{total_m:,.0f} م</div>'
-                    f'<div class="un">= {total_m/1000:.2f} كم</div></div>',
-                    unsafe_allow_html=True)
-        show = df[[c for c in df.columns if c!="_g"]].copy()
-        show["length_m"] = show["length_m"].round(0).astype(int)
-        st.dataframe(show, use_container_width=True, height=420)
         st.download_button("⬇️ تحميل CSV",
-            data=show.to_csv(index=True).encode("utf-8-sig"),
-            file_name="flood_network.csv", mime="text/csv", key="dl")
+                            df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig"),
+                            "flood_network.csv", "text/csv")

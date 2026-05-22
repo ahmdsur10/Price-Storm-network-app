@@ -56,6 +56,29 @@ def map_center(coords):
     if not coords: return RLAT, RLON
     return sum(c[1] for c in coords)/len(coords), sum(c[0] for c in coords)/len(coords)
 
+def sanitize_props(props):
+    """تحويل كل قيم الخصائص إلى أنواع قابلة للـ JSON"""
+    import datetime
+    clean = {}
+    for k, v in props.items():
+        if v is None:
+            clean[str(k)] = None
+        elif isinstance(v, (int, float, bool)):
+            clean[str(k)] = v
+        elif isinstance(v, str):
+            clean[str(k)] = v
+        elif isinstance(v, bytes):
+            try: clean[str(k)] = v.decode("utf-8","ignore")
+            except: clean[str(k)] = ""
+        elif isinstance(v, (datetime.date, datetime.datetime)):
+            clean[str(k)] = str(v)
+        else:
+            try: clean[str(k)] = float(v)
+            except:
+                try: clean[str(k)] = str(v)
+                except: clean[str(k)] = ""
+    return clean
+
 def parse_geom(geom):
     if not geom: return []
     t = geom.get("type",""); raw = geom.get("coordinates",[])
@@ -90,7 +113,7 @@ def load_geojson_cached(file_hash, text):
         if not isinstance(f, dict): continue
         coords = parse_geom(f.get("geometry") or {})
         if len(coords) < 2: continue
-        props = f.get("properties") or {}
+        props = sanitize_props(f.get("properties") or {})
         if is_projected(coords):
             length = round(length_m_proj(coords), 2)
             coords = convert_wgs84(tuple(map(tuple, coords)), epsg_file or 32637)
@@ -124,7 +147,7 @@ def load_shp_cached(file_hash, zb):
             for i, sr in enumerate(sf.shapeRecords()):
                 coords = [[float(p[0]),float(p[1])] for p in sr.shape.points if len(p)>=2]
                 if len(coords) < 2: continue
-                props = dict(zip(fnames, sr.record))
+                props = sanitize_props(dict(zip(fnames, sr.record)))
                 if is_projected(coords):
                     length = round(length_m_proj(coords), 2)
                     coords = convert_wgs84(tuple(map(tuple,coords)), epsg or 32637)

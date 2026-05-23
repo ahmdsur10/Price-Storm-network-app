@@ -237,29 +237,96 @@ def gen_pdf(sfeats, drawn_len, drawn_coords, stot, cost, pr1):
         ]))
         story += [lt, Spacer(1,12)]
 
-    # خريطة staticmap — الخطوط المختارة + الخط المرسوم
+    # خريطة staticmap — zoom تلقائي مركّز على الخطوط
     try:
-        from staticmap import StaticMap, Line
+        from staticmap import StaticMap, Line, CircleMarker
         from reportlab.platypus import Image as RLImg
-        sm = StaticMap(580, 320, url_template="https://tile.openstreetmap.org/{z}/{x}/{y}.png")
-        COLS = ["#e74c3c","#e67e22","#2ecc71","#9b59b6","#1abc9c","#f39c12","#16a085","#8e44ad"]
-        has_data = False
-        for idx, f in enumerate(sfeats):
-            if f["coords"]:
-                sm.add_line(Line([(c[0],c[1]) for c in f["coords"]], COLS[idx%len(COLS)], 4))
-                has_data = True
-        # رسم الخط المرسوم يدوياً بلون برتقالي مميز
+
+        # جمع كل الإحداثيات لحساب البoundingbox
+        all_pts = []
+        for f in sfeats:
+            all_pts.extend(f["coords"])
         if drawn_coords and len(drawn_coords) >= 2:
-            sm.add_line(Line([(c[0],c[1]) for c in drawn_coords], "#e67e22", 5))
-            has_data = True
-        if has_data:
-            img = sm.render(zoom=14)
-            ib = BytesIO(); img.save(ib,"PNG"); ib.seek(0)
-            story.append(Paragraph("Location Map (OpenStreetMap)", S("mh",fontSize=11,textColor=C("#0a2a5e"),spaceAfter=5)))
-            story.append(RLImg(ib, width=17*cm, height=9.2*cm))
-            story.append(Paragraph("© OpenStreetMap contributors", S("cap",fontSize=7,textColor=rlc.grey,alignment=TA_CENTER)))
+            all_pts.extend(drawn_coords)
+
+        if all_pts:
+            lons = [p[0] for p in all_pts]
+            lats = [p[1] for p in all_pts]
+            min_lon, max_lon = min(lons), max(lons)
+            min_lat, max_lat = min(lats), max(lats)
+
+            # حساب الـ zoom المثالي بناءً على حجم البoundingbox
+            # المعادلة: zoom = log2(360 / max_span) + تعديل للحجم 580×320
+            span_lon = max_lon - min_lon
+            span_lat = max_lat - min_lat
+            max_span = max(span_lon, span_lat * 1.5)  # تعويض نسبة العرض/الارتفاع
+
+            if max_span == 0:
+                auto_zoom = 17          # نقطة واحدة أو خط قصير جداً
+            else:
+                import math as _m
+                # 256px tile، خريطة 580px عرض → نطاق longitude يغطيه tile واحد
+                raw = _m.log2(360.0 / max_span) + _m.log2(580 / 256) - 0.6
+                auto_zoom = max(10, min(18, int(raw)))   # بين 10 و 18
+
+            # إضافة padding: نوسّع الـ bounding box بنسبة 30%
+            pad_lon = max(span_lon * 0.30, 0.002)
+            pad_lat = max(span_lat * 0.30, 0.002)
+            center_lon = (min_lon + max_lon) / 2
+            center_lat = (min_lat + max_lat) / 2
+
+            # رسم خريطة أكبر (800×450) ثم ضغطها في PDF للحصول على دقة أعلى
+            sm = StaticMap(800, 450,
+                           url_template="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                           padding_x=40, padding_y=30)
+
+            COLS = ["#e74c3c", "#e67e22", "#2ecc71", "#9b59b6",
+                    "#1abc9c", "#f39c12", "#16a085", "#8e44ad"]
+
+            for idx, f in enumerate(sfeats):
+                if not f["coords"]: continue
+                col = COLS[idx % len(COLS)]
+                pts = [(c[0], c[1]) for c in f["coords"]]
+                sm.add_line(Line(pts, col, 5))
+                # نقطة البداية (خضراء) والنهاية (حمراء)
+                sm.add_marker(CircleMarker(pts[0],  "#27ae60", 10))
+                sm.add_marker(CircleMarker(pts[-1], "#c0392b", 10))
+
+            if drawn_coords and len(drawn_coords) >= 2:
+                pts_d = [(c[0], c[1]) for c in drawn_coords]
+                sm.add_line(Line(pts_d, "#e67e22", 6))
+                sm.add_marker(CircleMarker(pts_d[0],  "#27ae60", 10))
+                sm.add_marker(CircleMarker(pts_d[-1], "#c0392b", 10))
+
+            img = sm.render(zoom=auto_zoom)
+            ib = BytesIO(); img.save(ib, "PNG"); ib.seek(0)
+
+            story.append(Paragraph(
+                "Location Map (OpenStreetMap) — Zoom %d" % auto_zoom,
+                S("mh", fontSize=11, textColor=C("#0a2a5e"), spaceAfter=5)))
+            story.append(RLImg(ib, width=17*cm, height=9.5*cm))
+
+            # مفتاح الألوان
+            legend_parts = []
+            for idx, f in enumerate(sfeats):
+                col = COLS[idx % len(COLS)]
+                legend_parts.append(
+                    f'<font color="{col}">■</font> خط #{f["i"]}')
+            if drawn_coords and len(drawn_coords) >= 2:
+                legend_parts.append('<font color="#e67e22">■</font> ✏️ Drawn')
+            legend_parts += ['<font color="#27ae60">●</font> Start',
+                             '<font color="#c0392b">●</font> End']
+            story.append(Paragraph(
+                "  |  ".join(legend_parts),
+                S("leg", fontSize=8, textColor=rlc.HexColor("#555"), spaceAfter=3)))
+            story.append(Paragraph(
+                "© OpenStreetMap contributors",
+                S("cap", fontSize=7, textColor=rlc.grey, alignment=TA_CENTER)))
+
     except Exception as e:
-        story.append(Paragraph(f"Map not available: {e}", S("e",fontSize=8,textColor=rlc.orange,alignment=TA_CENTER)))
+        story.append(Paragraph(
+            f"Map not available: {e}",
+            S("e", fontSize=8, textColor=rlc.orange, alignment=TA_CENTER)))
 
     story += [
         Spacer(1,10),

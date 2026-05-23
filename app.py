@@ -169,7 +169,7 @@ def make_df_cached(feats_json):
         rows.append(r)
     return pd.DataFrame(rows)
 
-def gen_pdf(sfeats, drawn_len, drawn_coords, stot, cost, pr1):
+def gen_pdf(sfeats, drawn_len, drawn_segments, stot, cost, pr1):
     """PDF مع خريطة staticmap — الخطوط المختارة + المرسوم"""
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors as rlc
@@ -242,12 +242,12 @@ def gen_pdf(sfeats, drawn_len, drawn_coords, stot, cost, pr1):
         from staticmap import StaticMap, Line, CircleMarker
         from reportlab.platypus import Image as RLImg
 
-        # جمع كل الإحداثيات لحساب البoundingbox
+        # جمع كل الإحداثيات لحساب الـ bounding box
         all_pts = []
         for f in sfeats:
             all_pts.extend(f["coords"])
-        if drawn_coords and len(drawn_coords) >= 2:
-            all_pts.extend(drawn_coords)
+        for seg in drawn_segments:
+            all_pts.extend(seg)
 
         if all_pts:
             lons = [p[0] for p in all_pts]
@@ -255,32 +255,21 @@ def gen_pdf(sfeats, drawn_len, drawn_coords, stot, cost, pr1):
             min_lon, max_lon = min(lons), max(lons)
             min_lat, max_lat = min(lats), max(lats)
 
-            # حساب الـ zoom المثالي بناءً على حجم البoundingbox
-            # المعادلة: zoom = log2(360 / max_span) + تعديل للحجم 580×320
             span_lon = max_lon - min_lon
             span_lat = max_lat - min_lat
-            max_span = max(span_lon, span_lat * 1.5)  # تعويض نسبة العرض/الارتفاع
+            max_span = max(span_lon, span_lat * 1.5)
 
             if max_span == 0:
-                auto_zoom = 17          # نقطة واحدة أو خط قصير جداً
+                auto_zoom = 17
             else:
-                import math as _m
-                # 256px tile، خريطة 580px عرض → نطاق longitude يغطيه tile واحد
-                raw = _m.log2(360.0 / max_span) + _m.log2(580 / 256) - 0.6
-                auto_zoom = max(10, min(18, int(raw)))   # بين 10 و 18
+                raw = math.log2(360.0 / max_span) + math.log2(800 / 256) - 0.5
+                auto_zoom = max(10, min(18, int(raw)))
 
-            # إضافة padding: نوسّع الـ bounding box بنسبة 30%
-            pad_lon = max(span_lon * 0.30, 0.002)
-            pad_lat = max(span_lat * 0.30, 0.002)
-            center_lon = (min_lon + max_lon) / 2
-            center_lat = (min_lat + max_lat) / 2
-
-            # رسم خريطة أكبر (800×450) ثم ضغطها في PDF للحصول على دقة أعلى
             sm = StaticMap(800, 450,
                            url_template="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-                           padding_x=40, padding_y=30)
+                           padding_x=50, padding_y=40)
 
-            COLS = ["#e74c3c", "#e67e22", "#2ecc71", "#9b59b6",
+            COLS = ["#e74c3c", "#2980b9", "#2ecc71", "#9b59b6",
                     "#1abc9c", "#f39c12", "#16a085", "#8e44ad"]
 
             for idx, f in enumerate(sfeats):
@@ -288,12 +277,13 @@ def gen_pdf(sfeats, drawn_len, drawn_coords, stot, cost, pr1):
                 col = COLS[idx % len(COLS)]
                 pts = [(c[0], c[1]) for c in f["coords"]]
                 sm.add_line(Line(pts, col, 5))
-                # نقطة البداية (خضراء) والنهاية (حمراء)
                 sm.add_marker(CircleMarker(pts[0],  "#27ae60", 10))
                 sm.add_marker(CircleMarker(pts[-1], "#c0392b", 10))
 
-            if drawn_coords and len(drawn_coords) >= 2:
-                pts_d = [(c[0], c[1]) for c in drawn_coords]
+            # كل خط مرسوم كـ segment منفصل — هذا يمنع خطوط الوتر
+            for seg in drawn_segments:
+                if len(seg) < 2: continue
+                pts_d = [(c[0], c[1]) for c in seg]
                 sm.add_line(Line(pts_d, "#e67e22", 6))
                 sm.add_marker(CircleMarker(pts_d[0],  "#27ae60", 10))
                 sm.add_marker(CircleMarker(pts_d[-1], "#c0392b", 10))
@@ -312,7 +302,7 @@ def gen_pdf(sfeats, drawn_len, drawn_coords, stot, cost, pr1):
                 col = COLS[idx % len(COLS)]
                 legend_parts.append(
                     f'<font color="{col}">■</font> خط #{f["i"]}')
-            if drawn_coords and len(drawn_coords) >= 2:
+            if drawn_segments:
                 legend_parts.append('<font color="#e67e22">■</font> ✏️ Drawn')
             legend_parts += ['<font color="#27ae60">●</font> Start',
                              '<font color="#c0392b">●</font> End']
@@ -517,17 +507,20 @@ with tab1:
     map_data = st_folium(m, width="100%", height=430,
                           returned_objects=["all_drawings"], key="main_map")
 
-    # حساب طول الخط المرسوم + حفظ الإحداثيات
+    # حساب طول الخط المرسوم + حفظ كل segment منفصلاً
     drawn_len = 0.0
-    drawn_coords = []   # [[lon,lat], ...]  تُمرَّر للـ PDF
+    drawn_segments = []   # [ [[lon,lat],...], [[lon,lat],...] ] — كل خط مرسوم منفصل
     if map_data and map_data.get("all_drawings"):
         for drw in map_data["all_drawings"]:
             g = drw.get("geometry") or {}
             if g.get("type") == "LineString":
-                c = g.get("coordinates",[])
+                c = g.get("coordinates", [])
                 if len(c) >= 2:
-                    drawn_len += length_m_wgs(c)
-                    drawn_coords.extend([[float(p[0]),float(p[1])] for p in c])
+                    seg = [[float(p[0]), float(p[1])] for p in c]
+                    drawn_len += length_m_wgs(seg)
+                    drawn_segments.append(seg)
+    # للتوافق مع الكود القديم: drawn_coords = أول segment (أو فارغ)
+    drawn_coords = drawn_segments[0] if drawn_segments else []
 
     # ── معلومات الخط المرسوم ──
     if drawn_len > 0:
@@ -601,7 +594,8 @@ with tab1:
             st.session_state.cost_result = {
                 "sfeats": sfeats,
                 "drawn_len": drawn_len,
-                "drawn_coords": drawn_coords,   # ← إحداثيات الخط المرسوم للـ PDF
+                "drawn_segments": drawn_segments,   # كل خط مرسوم كـ segment منفصل
+                "drawn_coords": drawn_coords,
                 "stot": stot, "cost": cost, "pr1": pr1
             }
             st.session_state.pdf_bytes = None
@@ -628,7 +622,7 @@ with tab1:
                     try:
                         st.session_state.pdf_bytes = gen_pdf(
                             cr["sfeats"], cr["drawn_len"],
-                            cr.get("drawn_coords", []),
+                            cr.get("drawn_segments", []),
                             cr["stot"], cr["cost"], cr["pr1"]
                         )
                         st.success("✅ جاهز!")

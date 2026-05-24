@@ -440,6 +440,79 @@ for k,v in [("feats",[]),("ac",[]),("feats_json","[]"),("sel_set","[]"),
             ("cost_result",None),("pdf_bytes",None),("_fhash",None)]:
     if k not in st.session_state: st.session_state[k]=v
 
+# ══ إخفاء "Manage app" عبر window.parent (الطريقة الوحيدة المضمونة) ══
+import streamlit.components.v1 as components
+components.html("""
+<script>
+(function() {
+    const KEYWORDS = ['manage app', 'manage-app', 'manageapp', 'hosted by streamlit', 'streamlit.io'];
+    const SELECTORS = [
+        '[data-testid="manage-app-button"]',
+        '[data-testid="stToolbar"]',
+        '[data-testid="stStatusWidget"]',
+        '[data-testid="stAppViewerBadge"]',
+        '[data-testid="stDecoration"]',
+        '.stDeployButton', '#MainMenu', 'footer',
+        'a[href*="github.com"]', 'a[href*="streamlit.io"]'
+    ];
+
+    function killEl(el) {
+        if (!el) return;
+        el.style.cssText = 'display:none!important;visibility:hidden!important;opacity:0!important;height:0!important;width:0!important;overflow:hidden!important;pointer-events:none!important;position:absolute!important;';
+        try { el.remove(); } catch(e) {}
+    }
+
+    function sweep(doc) {
+        if (!doc) return;
+        // بالـ selectors
+        SELECTORS.forEach(s => {
+            try { doc.querySelectorAll(s).forEach(killEl); } catch(e) {}
+        });
+        // بالنص
+        try {
+            doc.querySelectorAll('button, a, div, span, p, section, aside').forEach(el => {
+                const t = (el.innerText || el.textContent || '').toLowerCase();
+                if (KEYWORDS.some(k => t.includes(k))) killEl(el);
+            });
+        } catch(e) {}
+        // تغطية الزوايا السفلية بـ overlay
+        if (!doc.getElementById('_hide_overlay_br')) {
+            ['br','bl'].forEach((pos, i) => {
+                const d = doc.createElement('div');
+                d.id = '_hide_overlay_' + pos;
+                d.style.cssText = `position:fixed;bottom:0;${i===0?'right':'left'}:0;width:260px;height:70px;background:white;z-index:2147483647;pointer-events:none;`;
+                try { doc.body.appendChild(d); } catch(e) {}
+            });
+        }
+    }
+
+    function run() {
+        // الـ document الحالي (iframe)
+        sweep(document);
+        // window.parent (الصفحة الرئيسية)
+        try { sweep(window.parent.document); } catch(e) {}
+        // كل الـ iframes في الصفحة الرئيسية
+        try {
+            Array.from(window.parent.document.querySelectorAll('iframe')).forEach(fr => {
+                try { sweep(fr.contentDocument || fr.contentWindow.document); } catch(e) {}
+            });
+        } catch(e) {}
+    }
+
+    run();
+    // فحص كل 200ms لأول 15 ثانية
+    let n = 0;
+    const iv = setInterval(() => { run(); if (++n > 75) clearInterval(iv); }, 200);
+    // مراقبة مستمرة
+    try {
+        new MutationObserver(run).observe(window.parent.document.documentElement, {childList:true, subtree:true});
+    } catch(e) {
+        new MutationObserver(run).observe(document.documentElement, {childList:true, subtree:true});
+    }
+})();
+</script>
+""", height=0)
+
 # ══ Sidebar ══
 with st.sidebar:
     st.markdown('<div style="background:linear-gradient(135deg,#0a2a5e,#1a5fa8);color:#fff;padding:12px 16px;text-align:center;margin:-1px -1px 12px"><b style="font-size:.97rem">🌊 حاسبة شبكات السيول</b><br><small style="color:#b8d9f8">Eng. Ahmed Adam</small></div>', unsafe_allow_html=True)

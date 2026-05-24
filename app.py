@@ -26,7 +26,25 @@ html,body,[class*="css"],.stApp{font-family:'Cairo',sans-serif!important;directi
 .sig{background:#0a2a5e;color:#a8d0f0!important;text-align:center;padding:9px;border-radius:7px;margin-top:10px;font-size:.78rem}
 .sig b{color:#fff!important}
 .stButton>button{background:linear-gradient(135deg,#1a5fa8,#0a2a5e)!important;color:#fff!important;border:none!important;border-radius:8px!important;font-family:'Cairo',sans-serif!important;font-weight:700!important;font-size:.93rem!important;width:100%!important;padding:8px!important}
-footer {visibility: hidden !important;}
+
+/* ── إخفاء شريط الأدوات العلوي (GitHub + Fork + ⋮) والفوتر ── */
+[data-testid="stToolbar"],
+[data-testid="stToolbarActions"],
+[data-testid="baseButton-header"],
+.stToolbar, #stToolbar,
+header [data-testid="stToolbar"],
+div[class*="Toolbar"],
+div[class*="toolbar"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+}
+footer, [data-testid="stStatusWidget"] {
+    visibility: hidden !important;
+    display: none !important;
+}
 </style>""", unsafe_allow_html=True)
 
 RLAT, RLON = 24.7136, 46.6753
@@ -337,26 +355,45 @@ for k,v in [("feats",[]),("ac",[]),("feats_json","[]"),("sel_set","[]"),
             ("cost_result",None),("pdf_bytes",None),("_fhash",None)]:
     if k not in st.session_state: st.session_state[k]=v
 
-# ══ إخفاء "Hosted by Streamlit" واسم الحساب عبر window.parent ══
+# ══ إخفاء شريط GitHub وFork وHosted by عبر window.parent ══
 import streamlit.components.v1 as components
 components.html("""
 <script>
 (function() {
     function sweep(doc) {
         if (!doc) return;
-        // إخفاء الـ footer الرسمي
         try {
-            doc.querySelectorAll('footer, [data-testid="stStatusWidget"]').forEach(el => {
-                el.style.setProperty('display','none','important');
+            // الشريط العلوي بالكامل
+            [
+                '[data-testid="stToolbar"]',
+                '[data-testid="stToolbarActions"]',
+                '[data-testid="baseButton-header"]',
+                'footer',
+                '[data-testid="stStatusWidget"]',
+                '[data-testid="stDecoration"]'
+            ].forEach(sel => {
+                doc.querySelectorAll(sel).forEach(el => {
+                    el.style.setProperty('display', 'none', 'important');
+                    el.style.setProperty('visibility', 'hidden', 'important');
+                    el.style.setProperty('opacity', '0', 'important');
+                    el.style.setProperty('height', '0', 'important');
+                    el.style.setProperty('overflow', 'hidden', 'important');
+                });
             });
-        } catch(e) {}
-        // إخفاء أي عنصر يحتوي نص "hosted by" أو اسم حساب github
-        try {
-            doc.querySelectorAll('a, span, div, p').forEach(el => {
-                const t = (el.innerText || el.textContent || '').toLowerCase().trim();
-                if (t.includes('hosted by') || t.includes('streamlit.io')) {
-                    el.style.setProperty('display','none','important');
+            // أي زر يحتوي على "Fork" أو أيقونة GitHub
+            doc.querySelectorAll('a, button, span').forEach(el => {
+                const t = (el.innerText || el.textContent || '').trim();
+                if (t === 'Fork' || t === 'fork') {
+                    el.style.setProperty('display', 'none', 'important');
+                    // إخفاء الأب أيضاً
+                    if (el.parentElement) el.parentElement.style.setProperty('display', 'none', 'important');
+                    if (el.parentElement?.parentElement) el.parentElement.parentElement.style.setProperty('display', 'none', 'important');
                 }
+            });
+            // روابط GitHub
+            doc.querySelectorAll('a[href*="github.com"], a[href*="github.io"]').forEach(el => {
+                el.style.setProperty('display', 'none', 'important');
+                if (el.parentElement) el.parentElement.style.setProperty('display', 'none', 'important');
             });
         } catch(e) {}
     }
@@ -366,7 +403,7 @@ components.html("""
     }
     run();
     let n = 0;
-    const iv = setInterval(() => { run(); if (++n > 50) clearInterval(iv); }, 300);
+    const iv = setInterval(() => { run(); if (++n > 60) clearInterval(iv); }, 250);
     try {
         new MutationObserver(run).observe(window.parent.document.documentElement, {childList:true, subtree:true});
     } catch(e) {

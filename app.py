@@ -26,111 +26,8 @@ html,body,[class*="css"],.stApp{font-family:'Cairo',sans-serif!important;directi
 .sig{background:#0a2a5e;color:#a8d0f0!important;text-align:center;padding:9px;border-radius:7px;margin-top:10px;font-size:.78rem}
 .sig b{color:#fff!important}
 .stButton>button{background:linear-gradient(135deg,#1a5fa8,#0a2a5e)!important;color:#fff!important;border:none!important;border-radius:8px!important;font-family:'Cairo',sans-serif!important;font-weight:700!important;font-size:.93rem!important;width:100%!important;padding:8px!important}
-
-/* ══ إخفاء كامل لكل عناصر Streamlit ══ */
-#MainMenu, footer, [data-testid="stToolbar"],
-[data-testid="manage-app-button"], [data-testid="stAppViewerBadge"],
-[data-testid="stStatusWidget"], [data-testid="stDecoration"],
-[data-testid="stActionButtonIcon"], .stDeployButton,
-.viewerBadge_container__1QSob, .viewerBadge_link__1S137,
-a[href*="github"], a[href*="streamlit"], button[kind="header"] {
-    display: none !important;
-    visibility: hidden !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
-    width: 0 !important;
-    height: 0 !important;
-    overflow: hidden !important;
-}
-/* تغطية زاوية أسفل اليمين بطبقة بيضاء لإخفاء أي شيء يظهر هناك */
-body::after {
-    content: "";
-    position: fixed;
-    bottom: 0; right: 0;
-    width: 250px; height: 65px;
-    background: white;
-    z-index: 999999;
-    pointer-events: none;
-}
-/* تغطية زاوية أسفل اليسار أيضاً */
-body::before {
-    content: "";
-    position: fixed;
-    bottom: 0; left: 0;
-    width: 250px; height: 65px;
-    background: white;
-    z-index: 999999;
-    pointer-events: none;
-}
-
-/* ── نافذة الخريطة الكاملة (Fullscreen) ── */
-.map-fullscreen-btn {
-    position: absolute;
-    top: 8px;
-    left: 8px;
-    z-index: 9999;
-    background: #fff;
-    border: 2px solid rgba(0,0,0,0.3);
-    border-radius: 4px;
-    width: 32px;
-    height: 32px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 16px;
-    box-shadow: 0 2px 6px rgba(0,0,0,.25);
-    transition: background .2s;
-}
-.map-fullscreen-btn:hover {background: #f0f0f0;}
-.map-wrapper {position: relative;}
-.map-wrapper.fullscreen {
-    position: fixed !important;
-    top: 0 !important; left: 0 !important;
-    width: 100vw !important; height: 100vh !important;
-    z-index: 99999 !important;
-    background: #000;
-}
-.map-wrapper.fullscreen iframe {
-    width: 100% !important;
-    height: 100% !important;
-}
-</style>
-
-<script>
-(function hideAll() {
-    const SELECTORS = [
-        'a[href*="github"]', 'a[href*="streamlit"]',
-        '[data-testid="stToolbar"]', '[data-testid="manage-app-button"]',
-        '[data-testid="stAppViewerBadge"]', '[data-testid="stStatusWidget"]',
-        '[data-testid="stDecoration"]', '.viewerBadge_container__1QSob',
-        '.stDeployButton', 'footer', '#MainMenu'
-    ];
-    const KEYWORDS = ['manage app', 'manage-app', 'streamlit', 'hosted by'];
-
-    function nuke(el) {
-        el.style.cssText += 'display:none!important;visibility:hidden!important;opacity:0!important;width:0!important;height:0!important;overflow:hidden!important;';
-    }
-
-    function scan() {
-        // بالـ selectors
-        SELECTORS.forEach(s => { try { document.querySelectorAll(s).forEach(nuke); } catch(e){} });
-        // بالنص الداخلي
-        document.querySelectorAll('button, a, span, div, p').forEach(el => {
-            const txt = (el.innerText || '').toLowerCase().trim();
-            if (KEYWORDS.some(k => txt.includes(k))) nuke(el);
-        });
-    }
-
-    scan();
-    // تشغيل كل 300ms لأول 10 ثوان لضمان الإخفاء بعد التحميل الكامل
-    let count = 0;
-    const iv = setInterval(() => { scan(); if (++count > 33) clearInterval(iv); }, 300);
-    // مراقبة أي تغيير في DOM
-    new MutationObserver(scan).observe(document.documentElement, {childList:true, subtree:true});
-})();
-</script>
-""", unsafe_allow_html=True)
+footer {visibility: hidden !important;}
+</style>""", unsafe_allow_html=True)
 
 RLAT, RLON = 24.7136, 46.6753
 
@@ -440,70 +337,36 @@ for k,v in [("feats",[]),("ac",[]),("feats_json","[]"),("sel_set","[]"),
             ("cost_result",None),("pdf_bytes",None),("_fhash",None)]:
     if k not in st.session_state: st.session_state[k]=v
 
-# ══ إخفاء "Manage app" عبر window.parent (الطريقة الوحيدة المضمونة) ══
+# ══ إخفاء "Hosted by Streamlit" واسم الحساب عبر window.parent ══
 import streamlit.components.v1 as components
 components.html("""
 <script>
 (function() {
-    const KEYWORDS = ['manage app', 'manage-app', 'manageapp', 'hosted by streamlit', 'streamlit.io'];
-    const SELECTORS = [
-        '[data-testid="manage-app-button"]',
-        '[data-testid="stToolbar"]',
-        '[data-testid="stStatusWidget"]',
-        '[data-testid="stAppViewerBadge"]',
-        '[data-testid="stDecoration"]',
-        '.stDeployButton', '#MainMenu', 'footer',
-        'a[href*="github.com"]', 'a[href*="streamlit.io"]'
-    ];
-
-    function killEl(el) {
-        if (!el) return;
-        el.style.cssText = 'display:none!important;visibility:hidden!important;opacity:0!important;height:0!important;width:0!important;overflow:hidden!important;pointer-events:none!important;position:absolute!important;';
-        try { el.remove(); } catch(e) {}
-    }
-
     function sweep(doc) {
         if (!doc) return;
-        // بالـ selectors
-        SELECTORS.forEach(s => {
-            try { doc.querySelectorAll(s).forEach(killEl); } catch(e) {}
-        });
-        // بالنص
+        // إخفاء الـ footer الرسمي
         try {
-            doc.querySelectorAll('button, a, div, span, p, section, aside').forEach(el => {
-                const t = (el.innerText || el.textContent || '').toLowerCase();
-                if (KEYWORDS.some(k => t.includes(k))) killEl(el);
+            doc.querySelectorAll('footer, [data-testid="stStatusWidget"]').forEach(el => {
+                el.style.setProperty('display','none','important');
             });
         } catch(e) {}
-        // تغطية الزوايا السفلية بـ overlay
-        if (!doc.getElementById('_hide_overlay_br')) {
-            ['br','bl'].forEach((pos, i) => {
-                const d = doc.createElement('div');
-                d.id = '_hide_overlay_' + pos;
-                d.style.cssText = `position:fixed;bottom:0;${i===0?'right':'left'}:0;width:260px;height:70px;background:white;z-index:2147483647;pointer-events:none;`;
-                try { doc.body.appendChild(d); } catch(e) {}
+        // إخفاء أي عنصر يحتوي نص "hosted by" أو اسم حساب github
+        try {
+            doc.querySelectorAll('a, span, div, p').forEach(el => {
+                const t = (el.innerText || el.textContent || '').toLowerCase().trim();
+                if (t.includes('hosted by') || t.includes('streamlit.io')) {
+                    el.style.setProperty('display','none','important');
+                }
             });
-        }
+        } catch(e) {}
     }
-
     function run() {
-        // الـ document الحالي (iframe)
         sweep(document);
-        // window.parent (الصفحة الرئيسية)
         try { sweep(window.parent.document); } catch(e) {}
-        // كل الـ iframes في الصفحة الرئيسية
-        try {
-            Array.from(window.parent.document.querySelectorAll('iframe')).forEach(fr => {
-                try { sweep(fr.contentDocument || fr.contentWindow.document); } catch(e) {}
-            });
-        } catch(e) {}
     }
-
     run();
-    // فحص كل 200ms لأول 15 ثانية
     let n = 0;
-    const iv = setInterval(() => { run(); if (++n > 75) clearInterval(iv); }, 200);
-    // مراقبة مستمرة
+    const iv = setInterval(() => { run(); if (++n > 50) clearInterval(iv); }, 300);
     try {
         new MutationObserver(run).observe(window.parent.document.documentElement, {childList:true, subtree:true});
     } catch(e) {

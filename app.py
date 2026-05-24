@@ -32,6 +32,9 @@ html,body,[class*="css"],.stApp{font-family:'Cairo',sans-serif!important;directi
 footer {visibility: hidden !important; display: none !important;}
 header[data-testid="stHeader"] {background: transparent !important;}
 [data-testid="stToolbar"] {display: none !important;}
+[data-testid="manage-app-button"] {display: none !important;}
+[data-testid="stAppViewerBadge"] {display: none !important;}
+[data-testid="stStatusWidget"] {display: none !important;}
 .viewerBadge_container__1QSob {display: none !important;}
 .viewerBadge_link__1S137 {display: none !important;}
 a[href*="github"] {display: none !important; pointer-events: none !important;}
@@ -40,8 +43,9 @@ a[href*="streamlit"] {display: none !important; pointer-events: none !important;
 .stDeployButton {display: none !important;}
 button[kind="header"] {display: none !important;}
 [data-testid="stActionButtonIcon"] {display: none !important;}
-/* إخفاء شريط الأدوات العلوي بالكامل */
+/* إخفاء شريط الأدوات والشريط السفلي بالكامل */
 [data-testid="stAppViewBlockContainer"] > div:first-child > div > div[class*="toolbar"] {display:none!important;}
+.stApp > footer, .stApp [class*="footer"], [class*="StatusWidget"], [class*="manage-app"] {display:none!important;}
 
 /* ── نافذة الخريطة الكاملة (Fullscreen) ── */
 .map-fullscreen-btn {
@@ -78,11 +82,18 @@ button[kind="header"] {display: none !important;}
 </style>
 
 <script>
-// إخفاء GitHub وStreamlit بشكل كامل بعد التحميل
+// إخفاء GitHub وStreamlit و Manage app بشكل كامل بعد التحميل
 (function hideBranding() {
     function remove() {
-        // إخفاء زر GitHub
-        document.querySelectorAll('a[href*="github"], a[href*="streamlit"], [data-testid="stToolbar"], .viewerBadge_container__1QSob').forEach(el => {
+        document.querySelectorAll([
+            'a[href*="github"]',
+            'a[href*="streamlit"]',
+            '[data-testid="stToolbar"]',
+            '[data-testid="manage-app-button"]',
+            '[data-testid="stAppViewerBadge"]',
+            '[data-testid="stStatusWidget"]',
+            '.viewerBadge_container__1QSob'
+        ].join(',')).forEach(el => {
             el.style.display = 'none';
             el.style.visibility = 'hidden';
         });

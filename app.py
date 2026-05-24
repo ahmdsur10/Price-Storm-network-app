@@ -27,25 +27,41 @@ html,body,[class*="css"],.stApp{font-family:'Cairo',sans-serif!important;directi
 .sig b{color:#fff!important}
 .stButton>button{background:linear-gradient(135deg,#1a5fa8,#0a2a5e)!important;color:#fff!important;border:none!important;border-radius:8px!important;font-family:'Cairo',sans-serif!important;font-weight:700!important;font-size:.93rem!important;width:100%!important;padding:8px!important}
 
-/* ── إخفاء GitHub وشعار Streamlit وأي روابط للمصادر ── */
-#MainMenu {visibility: hidden !important; display: none !important;}
-footer {visibility: hidden !important; display: none !important;}
-header[data-testid="stHeader"] {background: transparent !important;}
-[data-testid="stToolbar"] {display: none !important;}
-[data-testid="manage-app-button"] {display: none !important;}
-[data-testid="stAppViewerBadge"] {display: none !important;}
-[data-testid="stStatusWidget"] {display: none !important;}
-.viewerBadge_container__1QSob {display: none !important;}
-.viewerBadge_link__1S137 {display: none !important;}
-a[href*="github"] {display: none !important; pointer-events: none !important;}
-a[href*="streamlit"] {display: none !important; pointer-events: none !important;}
-[data-testid="stDecoration"] {display: none !important;}
-.stDeployButton {display: none !important;}
-button[kind="header"] {display: none !important;}
-[data-testid="stActionButtonIcon"] {display: none !important;}
-/* إخفاء شريط الأدوات والشريط السفلي بالكامل */
-[data-testid="stAppViewBlockContainer"] > div:first-child > div > div[class*="toolbar"] {display:none!important;}
-.stApp > footer, .stApp [class*="footer"], [class*="StatusWidget"], [class*="manage-app"] {display:none!important;}
+/* ══ إخفاء كامل لكل عناصر Streamlit ══ */
+#MainMenu, footer, [data-testid="stToolbar"],
+[data-testid="manage-app-button"], [data-testid="stAppViewerBadge"],
+[data-testid="stStatusWidget"], [data-testid="stDecoration"],
+[data-testid="stActionButtonIcon"], .stDeployButton,
+.viewerBadge_container__1QSob, .viewerBadge_link__1S137,
+a[href*="github"], a[href*="streamlit"], button[kind="header"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+}
+/* تغطية زاوية أسفل اليمين بطبقة بيضاء لإخفاء أي شيء يظهر هناك */
+body::after {
+    content: "";
+    position: fixed;
+    bottom: 0; right: 0;
+    width: 250px; height: 65px;
+    background: white;
+    z-index: 999999;
+    pointer-events: none;
+}
+/* تغطية زاوية أسفل اليسار أيضاً */
+body::before {
+    content: "";
+    position: fixed;
+    bottom: 0; left: 0;
+    width: 250px; height: 65px;
+    background: white;
+    z-index: 999999;
+    pointer-events: none;
+}
 
 /* ── نافذة الخريطة الكاملة (Fullscreen) ── */
 .map-fullscreen-btn {
@@ -82,25 +98,36 @@ button[kind="header"] {display: none !important;}
 </style>
 
 <script>
-// إخفاء GitHub وStreamlit و Manage app بشكل كامل بعد التحميل
-(function hideBranding() {
-    function remove() {
-        document.querySelectorAll([
-            'a[href*="github"]',
-            'a[href*="streamlit"]',
-            '[data-testid="stToolbar"]',
-            '[data-testid="manage-app-button"]',
-            '[data-testid="stAppViewerBadge"]',
-            '[data-testid="stStatusWidget"]',
-            '.viewerBadge_container__1QSob'
-        ].join(',')).forEach(el => {
-            el.style.display = 'none';
-            el.style.visibility = 'hidden';
+(function hideAll() {
+    const SELECTORS = [
+        'a[href*="github"]', 'a[href*="streamlit"]',
+        '[data-testid="stToolbar"]', '[data-testid="manage-app-button"]',
+        '[data-testid="stAppViewerBadge"]', '[data-testid="stStatusWidget"]',
+        '[data-testid="stDecoration"]', '.viewerBadge_container__1QSob',
+        '.stDeployButton', 'footer', '#MainMenu'
+    ];
+    const KEYWORDS = ['manage app', 'manage-app', 'streamlit', 'hosted by'];
+
+    function nuke(el) {
+        el.style.cssText += 'display:none!important;visibility:hidden!important;opacity:0!important;width:0!important;height:0!important;overflow:hidden!important;';
+    }
+
+    function scan() {
+        // بالـ selectors
+        SELECTORS.forEach(s => { try { document.querySelectorAll(s).forEach(nuke); } catch(e){} });
+        // بالنص الداخلي
+        document.querySelectorAll('button, a, span, div, p').forEach(el => {
+            const txt = (el.innerText || '').toLowerCase().trim();
+            if (KEYWORDS.some(k => txt.includes(k))) nuke(el);
         });
     }
-    remove();
-    const obs = new MutationObserver(remove);
-    obs.observe(document.body, {childList: true, subtree: true});
+
+    scan();
+    // تشغيل كل 300ms لأول 10 ثوان لضمان الإخفاء بعد التحميل الكامل
+    let count = 0;
+    const iv = setInterval(() => { scan(); if (++count > 33) clearInterval(iv); }, 300);
+    // مراقبة أي تغيير في DOM
+    new MutationObserver(scan).observe(document.documentElement, {childList:true, subtree:true});
 })();
 </script>
 """, unsafe_allow_html=True)

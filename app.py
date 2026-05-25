@@ -22,35 +22,353 @@ def check_credentials(username: str, password: str) -> bool:
     except Exception:
         return False
 
+HIDE_TOOLBAR_CSS = """
+<style>
+/* ════════════════════════════════════════════════════════
+   إخفاء شامل وقاطع لكل عناصر Streamlit العلوية والسفلية
+   يسري على صفحة الدخول وبعد الدخول في كل مكان
+   ════════════════════════════════════════════════════════ */
+
+/* الشريط العلوي وكل أزراره */
+header[data-testid="stHeader"],
+header,
+[data-testid="stToolbar"],
+[data-testid="stToolbarActions"],
+[data-testid="baseButton-header"],
+[data-testid="stDecoration"],
+.stToolbar, #stToolbar,
+div[class*="Toolbar"],
+div[class*="toolbar"],
+div[class*="StatusWidget"],
+[data-testid="stStatusWidget"],
+.viewerBadge_container__1QSob,
+.viewerBadge_link__1S137,
+#MainMenu,
+[data-testid="collapsedControl"],
+button[title="View app fullscreen"],
+a[href*="streamlit.io"],
+a[href*="github.com"],
+svg[class*="octocat"],
+/* نقاط القائمة الثلاث */
+button[kind="header"],
+[data-testid="baseButton-headerNoPadding"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    overflow: hidden !important;
+    pointer-events: none !important;
+}
+
+/* الفوتر */
+footer,
+footer * {
+    display: none !important;
+    visibility: hidden !important;
+}
+
+/* إزالة المسافة الفارغة التي يتركها الهيدر */
+.stApp > header { display: none !important; }
+.block-container { padding-top: 1rem !important; }
+</style>
+"""
+
+HIDE_TOOLBAR_JS = """
+<script>
+(function() {
+    const SELECTORS = [
+        'header[data-testid="stHeader"]',
+        '[data-testid="stToolbar"]',
+        '[data-testid="stToolbarActions"]',
+        '[data-testid="baseButton-header"]',
+        '[data-testid="stDecoration"]',
+        '[data-testid="stStatusWidget"]',
+        '#MainMenu',
+        'footer',
+        'a[href*="github.com"]',
+        'a[href*="streamlit.io"]',
+    ];
+    function hideAll(doc) {
+        if (!doc) return;
+        try {
+            SELECTORS.forEach(sel => {
+                doc.querySelectorAll(sel).forEach(el => {
+                    el.style.cssText += 'display:none!important;visibility:hidden!important;opacity:0!important;height:0!important;overflow:hidden!important;pointer-events:none!important;';
+                    if (el.parentElement) {
+                        const tag = el.parentElement.tagName;
+                        if (tag === 'HEADER' || el.parentElement.getAttribute('data-testid') === 'stHeader') {
+                            el.parentElement.style.cssText += 'display:none!important;height:0!important;';
+                        }
+                    }
+                });
+            });
+            // إخفاء أي زر يحتوي على نص Fork أو GitHub
+            doc.querySelectorAll('button, a, span').forEach(el => {
+                const t = (el.innerText || el.textContent || '').trim();
+                if (['Fork','fork','GitHub','github','Share','Hosted with'].some(w => t.includes(w))) {
+                    el.style.cssText += 'display:none!important;';
+                    if (el.parentElement) el.parentElement.style.cssText += 'display:none!important;';
+                }
+            });
+        } catch(e){}
+    }
+    function run() {
+        hideAll(document);
+        try { hideAll(window.parent.document); } catch(e){}
+    }
+    run();
+    const iv = setInterval(run, 200);
+    setTimeout(() => clearInterval(iv), 15000);
+    try {
+        new MutationObserver(run).observe(document.documentElement, {childList:true, subtree:true});
+        new MutationObserver(run).observe(window.parent.document.documentElement, {childList:true, subtree:true});
+    } catch(e) {}
+})();
+</script>
+"""
+
+def inject_security():
+    """حقن CSS+JS لإخفاء الشريط — يُستدعى في كل صفحة"""
+    import streamlit.components.v1 as components
+    st.markdown(HIDE_TOOLBAR_CSS, unsafe_allow_html=True)
+    components.html(HIDE_TOOLBAR_JS, height=0)
+
 def login_page():
-    """صفحة تسجيل الدخول"""
-    st.markdown("""<style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
-html,body,[class*="css"],.stApp{font-family:'Cairo',sans-serif!important;direction:rtl}
-.login-box{max-width:380px;margin:80px auto;background:#fff;border-radius:14px;
-    padding:36px 32px;box-shadow:0 8px 32px rgba(10,42,94,.15);border-top:4px solid #1a5fa8}
-.login-title{text-align:center;color:#0a2a5e;font-size:1.4rem;font-weight:900;margin-bottom:4px}
-.login-sub{text-align:center;color:#1a5fa8;font-size:.85rem;margin-bottom:24px}
-</style>""", unsafe_allow_html=True)
+    """صفحة تسجيل الدخول — تصميم احترافي"""
+    inject_security()
+    st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Tajawal:wght@300;400;700&display=swap');
 
-    col1, col2, col3 = st.columns([1, 2, 1])
+html, body, [class*="css"], .stApp {
+    font-family: 'Cairo', sans-serif !important;
+    direction: rtl;
+}
+
+/* خلفية الصفحة — تدرج عميق مع نقوش هندسية */
+.stApp {
+    background:
+        radial-gradient(ellipse at 20% 50%, rgba(26,95,168,0.18) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 20%, rgba(10,42,94,0.25) 0%, transparent 55%),
+        radial-gradient(ellipse at 60% 80%, rgba(26,95,168,0.12) 0%, transparent 50%),
+        linear-gradient(135deg, #050e1f 0%, #091830 40%, #0d2447 100%) !important;
+    min-height: 100vh;
+}
+
+/* إزالة padding الافتراضي */
+.block-container {
+    padding: 0 !important;
+    max-width: 100% !important;
+}
+.element-container, .stVerticalBlock { gap: 0 !important; }
+
+/* ── بطاقة الدخول ── */
+.login-wrap {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.login-card {
+    width: 100%;
+    max-width: 440px;
+    background: rgba(255,255,255,0.04);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 24px;
+    padding: 48px 44px 40px;
+    box-shadow:
+        0 32px 80px rgba(0,0,0,0.5),
+        0 0 0 1px rgba(26,95,168,0.15) inset,
+        0 1px 0 rgba(255,255,255,0.08) inset;
+    position: relative;
+    overflow: hidden;
+}
+.login-card::before {
+    content: '';
+    position: absolute;
+    top: -60px; right: -60px;
+    width: 200px; height: 200px;
+    background: radial-gradient(circle, rgba(26,95,168,0.35) 0%, transparent 70%);
+    pointer-events: none;
+}
+.login-card::after {
+    content: '';
+    position: absolute;
+    bottom: -40px; left: -40px;
+    width: 160px; height: 160px;
+    background: radial-gradient(circle, rgba(10,42,94,0.4) 0%, transparent 70%);
+    pointer-events: none;
+}
+
+/* الشعار والعنوان */
+.login-logo {
+    text-align: center;
+    margin-bottom: 8px;
+}
+.login-logo .wave-icon {
+    font-size: 3.2rem;
+    display: block;
+    filter: drop-shadow(0 0 20px rgba(26,95,168,0.8));
+    animation: float 3s ease-in-out infinite;
+}
+@keyframes float {
+    0%,100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+}
+.login-title {
+    text-align: center;
+    color: #fff;
+    font-size: 1.5rem;
+    font-weight: 900;
+    letter-spacing: -0.3px;
+    margin: 10px 0 4px;
+    text-shadow: 0 2px 20px rgba(26,95,168,0.6);
+}
+.login-sub {
+    text-align: center;
+    color: rgba(180,210,255,0.7);
+    font-size: .82rem;
+    font-weight: 400;
+    margin-bottom: 32px;
+    letter-spacing: 0.2px;
+}
+.login-divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(26,95,168,0.5), rgba(100,160,255,0.3), transparent);
+    margin-bottom: 28px;
+}
+
+/* حقول الإدخال */
+.stTextInput > div > div > input {
+    background: rgba(255,255,255,0.06) !important;
+    border: 1.5px solid rgba(255,255,255,0.12) !important;
+    border-radius: 12px !important;
+    color: #fff !important;
+    font-family: 'Cairo', sans-serif !important;
+    font-size: .93rem !important;
+    padding: 12px 16px !important;
+    direction: rtl !important;
+    transition: all 0.25s ease !important;
+}
+.stTextInput > div > div > input:focus {
+    border-color: rgba(26,95,168,0.8) !important;
+    background: rgba(26,95,168,0.12) !important;
+    box-shadow: 0 0 0 3px rgba(26,95,168,0.18) !important;
+    outline: none !important;
+}
+.stTextInput > div > div > input::placeholder {
+    color: rgba(180,210,255,0.4) !important;
+}
+.stTextInput label {
+    color: rgba(180,210,255,0.85) !important;
+    font-family: 'Cairo', sans-serif !important;
+    font-size: .85rem !important;
+    font-weight: 600 !important;
+    margin-bottom: 6px !important;
+}
+
+/* زر الدخول */
+.stButton > button {
+    background: linear-gradient(135deg, #1a5fa8 0%, #0a2a5e 100%) !important;
+    border: none !important;
+    border-radius: 12px !important;
+    color: #fff !important;
+    font-family: 'Cairo', sans-serif !important;
+    font-size: 1rem !important;
+    font-weight: 700 !important;
+    padding: 13px !important;
+    width: 100% !important;
+    margin-top: 8px !important;
+    box-shadow: 0 6px 24px rgba(10,42,94,0.5) !important;
+    transition: all 0.25s ease !important;
+    letter-spacing: 0.5px !important;
+}
+.stButton > button:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 10px 32px rgba(26,95,168,0.55) !important;
+    background: linear-gradient(135deg, #2070c8 0%, #0d3570 100%) !important;
+}
+
+/* رسائل الخطأ */
+.stAlert {
+    border-radius: 10px !important;
+    font-family: 'Cairo', sans-serif !important;
+    font-size: .85rem !important;
+    margin-top: 10px !important;
+}
+
+/* الفوتر داخل البطاقة */
+.login-footer {
+    text-align: center;
+    color: rgba(180,210,255,0.35);
+    font-size: .72rem;
+    margin-top: 24px;
+    letter-spacing: 0.3px;
+}
+
+/* نقاط الزخرفة */
+.dots-bg {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+}
+.dot {
+    position: absolute;
+    width: 2px; height: 2px;
+    background: rgba(100,160,255,0.4);
+    border-radius: 50%;
+    animation: twinkle 4s ease-in-out infinite;
+}
+@keyframes twinkle {
+    0%,100%{opacity:.2;transform:scale(1)}
+    50%{opacity:1;transform:scale(1.8)}
+}
+</style>
+""", unsafe_allow_html=True)
+
+    # خلفية نقاط ديكورية
+    st.markdown("""
+<div class="dots-bg">
+  <div class="dot" style="top:12%;left:15%;animation-delay:0s"></div>
+  <div class="dot" style="top:25%;left:72%;animation-delay:.8s"></div>
+  <div class="dot" style="top:60%;left:8%;animation-delay:1.5s"></div>
+  <div class="dot" style="top:75%;left:88%;animation-delay:.3s"></div>
+  <div class="dot" style="top:40%;left:50%;animation-delay:2.1s"></div>
+  <div class="dot" style="top:85%;left:35%;animation-delay:1.1s"></div>
+  <div class="dot" style="top:5%;left:90%;animation-delay:2.7s"></div>
+  <div class="dot" style="top:50%;left:25%;animation-delay:.6s"></div>
+</div>
+""", unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 1.6, 1])
     with col2:
-        st.markdown('<div class="login-box">', unsafe_allow_html=True)
-        st.markdown('<div class="login-title">🌊 حاسبة شبكات السيول</div>', unsafe_allow_html=True)
-        st.markdown('<div class="login-sub">Eng. Ahmed Adam — يرجى تسجيل الدخول للمتابعة</div>', unsafe_allow_html=True)
+        st.markdown("""
+<div class="login-logo">
+  <span class="wave-icon">🌊</span>
+</div>
+<div class="login-title">حاسبة شبكات تصريف السيول</div>
+<div class="login-sub">Flood Drainage Network Calculator &nbsp;·&nbsp; Eng. Ahmed Adam</div>
+<div class="login-divider"></div>
+""", unsafe_allow_html=True)
 
-        username = st.text_input("👤 اسم المستخدم", placeholder="أدخل اسم المستخدم", key="login_user")
-        password = st.text_input("🔒 كلمة المرور", type="password", placeholder="أدخل كلمة المرور", key="login_pass")
+        username = st.text_input("اسم المستخدم", placeholder="أدخل اسم المستخدم", key="login_user", label_visibility="visible")
+        password = st.text_input("كلمة المرور", type="password", placeholder="• • • • • • • •", key="login_pass", label_visibility="visible")
 
-        if st.button("🔑 تسجيل الدخول", use_container_width=True):
+        if st.button("🔑  تسجيل الدخول", use_container_width=True):
             if check_credentials(username.strip(), password):
                 st.session_state["authenticated"] = True
                 st.session_state["current_user"] = username.strip()
                 st.rerun()
             else:
-                st.error("❌ اسم المستخدم أو كلمة المرور غير صحيحة")
+                st.error("❌  اسم المستخدم أو كلمة المرور غير صحيحة")
 
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-footer">© 2025 Flood Drainage Networks — جميع الحقوق محفوظة</div>', unsafe_allow_html=True)
 
 # التحقق من حالة تسجيل الدخول
 if "authenticated" not in st.session_state:
@@ -60,8 +378,11 @@ if not st.session_state["authenticated"]:
     login_page()
     st.stop()
 
+# حقن الأمان في الصفحة الرئيسية أيضاً
+inject_security()
+
 st.markdown("""<style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
 html,body,[class*="css"],.stApp{font-family:'Cairo',sans-serif!important;direction:rtl}
 [data-testid="stSidebar"]{min-width:320px!important;max-width:360px!important;background:#f7f9fc!important}
 .hdr{background:linear-gradient(135deg,#0a2a5e,#1a5fa8);color:#fff;padding:14px 20px;border-radius:10px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
@@ -76,25 +397,6 @@ html,body,[class*="css"],.stApp{font-family:'Cairo',sans-serif!important;directi
 .sig{background:#0a2a5e;color:#a8d0f0!important;text-align:center;padding:9px;border-radius:7px;margin-top:10px;font-size:.78rem}
 .sig b{color:#fff!important}
 .stButton>button{background:linear-gradient(135deg,#1a5fa8,#0a2a5e)!important;color:#fff!important;border:none!important;border-radius:8px!important;font-family:'Cairo',sans-serif!important;font-weight:700!important;font-size:.93rem!important;width:100%!important;padding:8px!important}
-
-/* ── إخفاء شريط الأدوات العلوي (GitHub + Fork + ⋮) والفوتر ── */
-[data-testid="stToolbar"],
-[data-testid="stToolbarActions"],
-[data-testid="baseButton-header"],
-.stToolbar, #stToolbar,
-header [data-testid="stToolbar"],
-div[class*="Toolbar"],
-div[class*="toolbar"] {
-    display: none !important;
-    visibility: hidden !important;
-    opacity: 0 !important;
-    height: 0 !important;
-    overflow: hidden !important;
-}
-footer, [data-testid="stStatusWidget"] {
-    visibility: hidden !important;
-    display: none !important;
-}
 </style>""", unsafe_allow_html=True)
 
 RLAT, RLON = 24.7136, 46.6753
@@ -404,64 +706,6 @@ def gen_pdf(sfeats, drawn_len, drawn_segments, stot, cost, pr1):
 for k,v in [("feats",[]),("ac",[]),("feats_json","[]"),("sel_set","[]"),
             ("cost_result",None),("pdf_bytes",None),("_fhash",None)]:
     if k not in st.session_state: st.session_state[k]=v
-
-# ══ إخفاء شريط GitHub وFork وHosted by عبر window.parent ══
-import streamlit.components.v1 as components
-components.html("""
-<script>
-(function() {
-    function sweep(doc) {
-        if (!doc) return;
-        try {
-            // الشريط العلوي بالكامل
-            [
-                '[data-testid="stToolbar"]',
-                '[data-testid="stToolbarActions"]',
-                '[data-testid="baseButton-header"]',
-                'footer',
-                '[data-testid="stStatusWidget"]',
-                '[data-testid="stDecoration"]'
-            ].forEach(sel => {
-                doc.querySelectorAll(sel).forEach(el => {
-                    el.style.setProperty('display', 'none', 'important');
-                    el.style.setProperty('visibility', 'hidden', 'important');
-                    el.style.setProperty('opacity', '0', 'important');
-                    el.style.setProperty('height', '0', 'important');
-                    el.style.setProperty('overflow', 'hidden', 'important');
-                });
-            });
-            // أي زر يحتوي على "Fork" أو أيقونة GitHub
-            doc.querySelectorAll('a, button, span').forEach(el => {
-                const t = (el.innerText || el.textContent || '').trim();
-                if (t === 'Fork' || t === 'fork') {
-                    el.style.setProperty('display', 'none', 'important');
-                    // إخفاء الأب أيضاً
-                    if (el.parentElement) el.parentElement.style.setProperty('display', 'none', 'important');
-                    if (el.parentElement?.parentElement) el.parentElement.parentElement.style.setProperty('display', 'none', 'important');
-                }
-            });
-            // روابط GitHub
-            doc.querySelectorAll('a[href*="github.com"], a[href*="github.io"]').forEach(el => {
-                el.style.setProperty('display', 'none', 'important');
-                if (el.parentElement) el.parentElement.style.setProperty('display', 'none', 'important');
-            });
-        } catch(e) {}
-    }
-    function run() {
-        sweep(document);
-        try { sweep(window.parent.document); } catch(e) {}
-    }
-    run();
-    let n = 0;
-    const iv = setInterval(() => { run(); if (++n > 60) clearInterval(iv); }, 250);
-    try {
-        new MutationObserver(run).observe(window.parent.document.documentElement, {childList:true, subtree:true});
-    } catch(e) {
-        new MutationObserver(run).observe(document.documentElement, {childList:true, subtree:true});
-    }
-})();
-</script>
-""", height=0)
 
 # ══ Sidebar ══
 with st.sidebar:

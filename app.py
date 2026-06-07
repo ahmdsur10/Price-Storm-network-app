@@ -1,4 +1,4 @@
-cat > /home/claude/flood_app/app.py << 'PYEOF'
+
 import streamlit as st
 import json, math, os, tempfile, zipfile
 from io import BytesIO

@@ -1001,8 +1001,4 @@ with tab2:
         st.download_button("⬇️ تحميل CSV",
             df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig"),
             "flood_network.csv", "text/csv")
-PYEOF
-echo "Done: $(wc -l < /home/claude/flood_app/app.py) lines"
-Output
 
-Done: 1002 lines

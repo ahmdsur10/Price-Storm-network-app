@@ -362,20 +362,20 @@ def gen_pdf(segments_data, stot, total_cost):
 
     story = []
 
-    # ── رأس التقرير ──
-    story.append(Paragraph(ar("تقرير تكلفة شبكات تصريف السيول"),
+    # ── Report Header ──
+    story.append(Paragraph("Flood Drainage Network Cost Report",
         SB("title", fontSize=16, textColor=C("#0a2a5e"), alignment=TA_CENTER, spaceAfter=4)))
     story.append(Paragraph("Eng. Ahmed Adam | Flood Drainage Networks 2025",
         S("sub", fontSize=9, textColor=C("#1a5fa8"), alignment=TA_CENTER, spaceAfter=10)))
     story.append(HRFlowable(width="100%", thickness=2, color=C("#1a5fa8"), spaceAfter=10))
 
-    # ── ملخص ──
+    # ── Summary ──
     sum_rows = [
-        [ar("البيان"), ar("القيمة")],
-        [ar("عدد العناصر"), str(len(segments_data))],
-        [ar("مجموع الأطوال"), "%.2f m  /  %.3f km" % (stot, stot/1000)],
-        [ar("التكلفة الإجمالية"), "%.2f SAR" % total_cost],
-        [ar("بالمليون"), "%.4f M SAR" % (total_cost/1e6)],
+        ["Description", "Value"],
+        ["Number of Elements", str(len(segments_data))],
+        ["Total Length", "%.2f m  /  %.3f km" % (stot, stot/1000)],
+        ["Total Cost", "%.2f SAR" % total_cost],
+        ["In Millions", "%.4f M SAR" % (total_cost/1e6)],
     ]
     t1 = Table(sum_rows, colWidths=[7*cm, 10*cm])
     t1.setStyle(TableStyle([
@@ -397,42 +397,7 @@ def gen_pdf(segments_data, stot, total_cost):
     ]))
     story += [t1, Spacer(1, 14)]
 
-    # ── تفاصيل العناصر ──
-    story.append(Paragraph(ar("تفاصيل العناصر"),
-        SB("h2", fontSize=11, textColor=C("#0a2a5e"), spaceAfter=6)))
-
-    detail_rows = [[
-        ar("م"), ar("النوع"), ar("القطر (ملم)"),
-        ar("الطول (م)"), ar("سعر المتر"), ar("التكلفة (ريال)")
-    ]]
-    for s in segments_data:
-        type_ar  = ar(LINE_TYPES.get(s["line_type"], s["line_type"]))
-        dia_txt  = str(s["diameter_mm"]) if s.get("diameter_mm") else "-"
-        detail_rows.append([
-            s["label"],
-            type_ar,
-            dia_txt,
-            "%.1f" % s["len"],
-            "%.0f" % s["price_per_m"],
-            "%.2f" % s["cost"],
-        ])
-
-    lt = Table(detail_rows, colWidths=[1.5*cm, 3.5*cm, 2.5*cm, 3*cm, 3*cm, 4.5*cm])
-    lt.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),C("#1a5fa8")),
-        ("TEXTCOLOR",(0,0),(-1,0),rlc.white),
-        ("FONTNAME",(0,0),(-1,0),FONTB),
-        ("FONTNAME",(0,1),(-1,-1),FONT),
-        ("FONTSIZE",(0,0),(-1,-1),9),
-        ("ALIGN",(0,0),(-1,-1),"CENTER"),
-        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[rlc.white,C("#f0f7ff")]),
-        ("GRID",(0,0),(-1,-1),.4,C("#d0e4f7")),
-        ("ROWHEIGHT",(0,0),(-1,-1),18),
-    ]))
-    story += [lt, Spacer(1, 14)]
-
-    # ── خريطة الموقع ──
+    # ── Location Map ──
     try:
         from staticmap import StaticMap, Line, CircleMarker
         from reportlab.platypus import Image as RLImg
@@ -446,10 +411,8 @@ def gen_pdf(segments_data, stot, total_cost):
             sm = StaticMap(800, 450,
                            url_template="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
                            padding_x=50, padding_y=40)
-            LINE_COLORS = ["#c0392b","#2980b9","#16a085","#8e44ad","#d35400","#27ae60"]
             for idx, s in enumerate(segments_data):
                 if not s.get("coords"): continue
-                # الخط المرسوم والخط من الملف كلاهما باللون الأسود في التقرير
                 col = "#222222"
                 pts = [(c[0],c[1]) for c in s["coords"]]
                 sm.add_line(Line(pts, col, 5))
@@ -459,7 +422,7 @@ def gen_pdf(segments_data, stot, total_cost):
             img = sm.render(zoom=zoom)
             ib = BytesIO(); img.save(ib,"PNG"); ib.seek(0)
             story.append(Paragraph(
-                ar("خريطة الموقع") + " (OpenStreetMap) — Zoom %d" % zoom,
+                "Location Map (OpenStreetMap) — Zoom %d" % zoom,
                 SB("mh", fontSize=11, textColor=C("#0a2a5e"), spaceAfter=5)))
             story.append(RLImg(ib, width=17*cm, height=9.5*cm))
             story.append(Paragraph("© OpenStreetMap contributors",
@@ -1000,4 +963,3 @@ with tab2:
         st.download_button("⬇️ تحميل CSV",
             df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig"),
             "flood_network.csv", "text/csv")
-

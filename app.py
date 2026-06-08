@@ -499,7 +499,9 @@ with st.sidebar:
                     f'👤 <b>{st.session_state.get("current_user","")}</b></div>', unsafe_allow_html=True)
     with uc2:
         if st.button("خروج 🚪", key="logout_btn"):
-            st.session_state["authenticated"] = False
+            # مسح جميع البيانات عند الخروج
+            for k in list(st.session_state.keys()):
+                del st.session_state[k]
             st.rerun()
     st.markdown("---")
     st.markdown("**📂 رفع بيانات الشبكة**")
@@ -524,9 +526,23 @@ with st.sidebar:
                 st.session_state._fhash = fhash
                 st.session_state.props_keys = pk
                 st.session_state.sel_feat_meta = {}
+                st.session_state.drawn_meta = []
                 st.success(f"✅ {len(f)} خط")
             else:
                 st.warning("لم تُوجد خطوط صالحة")
+    else:
+        # إذا أزال المستخدم الملف — امسح بيانات الملف فقط
+        if st.session_state._fhash is not None:
+            st.session_state.feats = []
+            st.session_state.ac = []
+            st.session_state.feats_json = "[]"
+            st.session_state.sel_set = "[]"
+            st.session_state.cost_result = None
+            st.session_state.pdf_bytes = None
+            st.session_state._fhash = None
+            st.session_state.props_keys = []
+            st.session_state.sel_feat_meta = {}
+            st.session_state.drawn_meta = []
     if st.session_state.feats:
         tl = sum(x["len"] for x in st.session_state.feats)
         st.caption(f"📊 {len(st.session_state.feats)} خط — {tl/1000:.2f} كم")
@@ -708,12 +724,11 @@ with tab1:
 
                 # ── الخطوة 1: نوع الخط ──
                 st.markdown("**① نوع الخط:**")
-                lt_choice = st.radio(
-                    "نوع",
+                lt_choice = st.selectbox(
+                    "نوع الخط",
                     list(LINE_TYPES.values()),
                     index=list(LINE_TYPES.keys()).index(meta.get("line_type","pipe")),
                     key=f"lt_{feat_i}",
-                    horizontal=True,
                     label_visibility="collapsed"
                 )
                 meta["line_type"] = [k for k,v in LINE_TYPES.items() if v == lt_choice][0]
@@ -751,11 +766,10 @@ with tab1:
                 # ── الخطوة 3: السعر ──
                 st.markdown("**③ السعر (ريال/م):**")
                 guide_price = get_price(meta["line_type"], meta.get("diameter_mm"), 0)
-                price_mode = st.radio(
-                    "مصدر السعر:",
+                price_mode = st.selectbox(
+                    "مصدر السعر",
                     ["إرشادي", "مخصص"],
                     key=f"prmode_{feat_i}",
-                    horizontal=True,
                     label_visibility="collapsed")
                 if price_mode == "مخصص":
                     cp = st.number_input("سعر مخصص (ريال/م):", min_value=0.0,
@@ -798,12 +812,11 @@ with tab1:
 
                 # ── نوع الخط ──
                 st.markdown("**① نوع الخط:**")
-                lt_d = st.radio(
-                    "نوع",
+                lt_d = st.selectbox(
+                    "نوع الخط",
                     list(LINE_TYPES.values()),
                     index=list(LINE_TYPES.keys()).index(meta_d.get("line_type","pipe")),
                     key=f"dlt_{idx}",
-                    horizontal=True,
                     label_visibility="collapsed")
                 meta_d["line_type"] = [k for k,v in LINE_TYPES.items() if v == lt_d][0]
 
@@ -824,11 +837,10 @@ with tab1:
                 # ── السعر ──
                 st.markdown("**③ السعر (ريال/م):**")
                 guide_d = get_price(meta_d["line_type"], meta_d.get("diameter_mm"), 0)
-                price_mode_d = st.radio(
-                    "مصدر السعر:",
+                price_mode_d = st.selectbox(
+                    "مصدر السعر",
                     ["إرشادي", "مخصص"],
                     key=f"dprmode_{idx}",
-                    horizontal=True,
                     label_visibility="collapsed")
                 if price_mode_d == "مخصص":
                     cp_d = st.number_input("سعر مخصص (ريال/م):", min_value=0.0,
@@ -880,50 +892,52 @@ with tab1:
         if not sfeats and not raw_drawn:
             st.warning("اختر خطاً من الملف أو ارسم خطاً على الخريطة")
         else:
-            segments_data = []
-            total_cost = 0.0
-            total_len  = 0.0
+            with st.spinner("⏳ جاري حساب التكلفة..."):
+                segments_data = []
+                total_cost = 0.0
+                total_len  = 0.0
 
-            for f in sfeats:
-                meta = st.session_state.sel_feat_meta.get(
-                    f["i"], {"line_type":"pipe","diameter_mm":1400,"custom_price":0})
-                ppm  = get_price(meta["line_type"], meta.get("diameter_mm"), meta.get("custom_price",0))
-                cost = f["len"] * ppm
-                total_cost += cost; total_len += f["len"]
-                segments_data.append({
-                    "label": f"#{f['i']}",
-                    "len": f["len"],
-                    "line_type": meta["line_type"],
-                    "diameter_mm": meta.get("diameter_mm"),
-                    "price_per_m": ppm,
-                    "cost": cost,
-                    "coords": f["coords"],
-                    "is_drawn": False,
-                })
+                for f in sfeats:
+                    meta = st.session_state.sel_feat_meta.get(
+                        f["i"], {"line_type":"pipe","diameter_mm":1400,"custom_price":0})
+                    ppm  = get_price(meta["line_type"], meta.get("diameter_mm"), meta.get("custom_price",0))
+                    cost = f["len"] * ppm
+                    total_cost += cost; total_len += f["len"]
+                    segments_data.append({
+                        "label": f"#{f['i']}",
+                        "len": f["len"],
+                        "line_type": meta["line_type"],
+                        "diameter_mm": meta.get("diameter_mm"),
+                        "price_per_m": ppm,
+                        "cost": cost,
+                        "coords": f["coords"],
+                        "is_drawn": False,
+                    })
 
-            for idx, seg in enumerate(raw_drawn):
-                seg_len = length_m_wgs(seg)
-                meta_d  = st.session_state.drawn_meta[idx] if idx < len(st.session_state.drawn_meta) else {}
-                ppm  = get_price(meta_d.get("line_type","pipe"), meta_d.get("diameter_mm"), meta_d.get("custom_price",0))
-                cost = seg_len * ppm
-                total_cost += cost; total_len += seg_len
-                segments_data.append({
-                    "label": f"✏{idx+1}",
-                    "len": seg_len,
-                    "line_type": meta_d.get("line_type","pipe"),
-                    "diameter_mm": meta_d.get("diameter_mm"),
-                    "price_per_m": ppm,
-                    "cost": cost,
-                    "coords": seg,
-                    "is_drawn": True,
-                })
+                for idx, seg in enumerate(raw_drawn):
+                    seg_len = length_m_wgs(seg)
+                    meta_d  = st.session_state.drawn_meta[idx] if idx < len(st.session_state.drawn_meta) else {}
+                    ppm  = get_price(meta_d.get("line_type","pipe"), meta_d.get("diameter_mm"), meta_d.get("custom_price",0))
+                    cost = seg_len * ppm
+                    total_cost += cost; total_len += seg_len
+                    segments_data.append({
+                        "label": f"✏{idx+1}",
+                        "len": seg_len,
+                        "line_type": meta_d.get("line_type","pipe"),
+                        "diameter_mm": meta_d.get("diameter_mm"),
+                        "price_per_m": ppm,
+                        "cost": cost,
+                        "coords": seg,
+                        "is_drawn": True,
+                    })
 
-            st.session_state.cost_result = {
-                "segments_data": segments_data,
-                "stot": total_len,
-                "total_cost": total_cost,
-            }
-            st.session_state.pdf_bytes = None
+                st.session_state.cost_result = {
+                    "segments_data": segments_data,
+                    "stot": total_len,
+                    "total_cost": total_cost,
+                }
+                st.session_state.pdf_bytes = None
+            st.success("✅ تم حساب التكلفة بنجاح!")
 
     # ── نتيجة الحساب ──
     if st.session_state.cost_result:

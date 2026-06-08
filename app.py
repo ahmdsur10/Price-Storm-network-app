@@ -3,7 +3,7 @@ import json, math, os, tempfile, zipfile
 from io import BytesIO
 
 st.set_page_config(page_title="حاسبة شبكات السيول", page_icon="🌊",
-                   layout="wide", initial_sidebar_state="expanded",
+                   layout="wide", initial_sidebar_state="collapsed",
                    menu_items={'Get Help': None, 'Report a bug': None, 'About': None})
 
 # ══════════════════════════════
@@ -49,14 +49,27 @@ html,body,[class*="css"],.stApp{font-family:'Cairo',sans-serif!important;directi
 header[data-testid="stHeader"],header,[data-testid="stToolbar"],[data-testid="stToolbarActions"],
 [data-testid="baseButton-header"],[data-testid="stDecoration"],.stToolbar,#stToolbar,
 div[class*="Toolbar"],div[class*="StatusWidget"],[data-testid="stStatusWidget"],
-#MainMenu,[data-testid="collapsedControl"],button[title="View app fullscreen"],
+#MainMenu,button[title="View app fullscreen"],
 a[href*="streamlit.io"],a[href*="github.com"],button[kind="header"],
 [data-testid="baseButton-headerNoPadding"]{
     display:none!important;visibility:hidden!important;opacity:0!important;
     height:0!important;max-height:0!important;overflow:hidden!important;pointer-events:none!important}
 footer,footer *{display:none!important;visibility:hidden!important}
 .stApp>header{display:none!important}
-.block-container{padding-top:1rem!important}
+.block-container{padding-top:0.5rem!important;padding-left:0.75rem!important;padding-right:0.75rem!important;max-width:100%!important}
+/* Mobile touch targets */
+@media(max-width:768px){
+  .stButton>button{min-height:52px!important;font-size:1rem!important;padding:12px!important;touch-action:manipulation}
+  .stSelectbox>div>div{min-height:48px!important}
+  .stRadio>div{gap:8px!important}
+  .stRadio>div>label{padding:10px 14px!important;border-radius:8px!important;background:#f0f7ff;min-height:44px!important;display:flex!important;align-items:center!important}
+  .stMultiSelect>div{min-height:48px!important}
+  .stTextInput>div>div>input{min-height:48px!important;font-size:1rem!important}
+  .stNumberInput>div>div>input{min-height:48px!important;font-size:1rem!important}
+  .block-container{padding-left:0.5rem!important;padding-right:0.5rem!important}
+  [data-testid="stSidebar"]{width:100vw!important;max-width:100vw!important}
+  .stTabs [data-baseweb="tab"]{padding:10px 12px!important;font-size:.9rem!important}
+}
 </style>
 """
 
@@ -85,24 +98,30 @@ def login_page():
     st.markdown("""<style>
 .stApp{background:linear-gradient(135deg,#050e1f 0%,#091830 40%,#0d2447 100%)!important;min-height:100vh}
 .block-container{padding:0!important;max-width:100%!important}
-.login-title{text-align:center;color:#fff;font-size:1.5rem;font-weight:900;margin:10px 0 4px}
-.login-sub{text-align:center;color:rgba(180,210,255,.7);font-size:.82rem;margin-bottom:28px}
-.login-div{height:1px;background:linear-gradient(90deg,transparent,rgba(26,95,168,.5),transparent);margin-bottom:24px}
-.login-foot{text-align:center;color:rgba(180,210,255,.35);font-size:.72rem;margin-top:20px}
+.login-wrap{max-width:420px;margin:0 auto;padding:24px 20px}
+.login-title{text-align:center;color:#fff;font-size:1.4rem;font-weight:900;margin:10px 0 4px}
+.login-sub{text-align:center;color:rgba(180,210,255,.7);font-size:.8rem;margin-bottom:24px}
+.login-div{height:1px;background:linear-gradient(90deg,transparent,rgba(26,95,168,.5),transparent);margin-bottom:20px}
+.login-foot{text-align:center;color:rgba(180,210,255,.35);font-size:.7rem;margin-top:20px}
 .stTextInput>div>div>input{background:rgba(255,255,255,.06)!important;border:1.5px solid rgba(255,255,255,.12)!important;
-  border-radius:12px!important;color:#fff!important;font-family:'Cairo',sans-serif!important;padding:12px 16px!important;direction:rtl!important}
-.stTextInput label{color:rgba(180,210,255,.85)!important;font-family:'Cairo',sans-serif!important;font-size:.85rem!important;font-weight:600!important}
+  border-radius:12px!important;color:#fff!important;font-family:'Cairo',sans-serif!important;
+  padding:14px 16px!important;direction:rtl!important;font-size:1rem!important;min-height:52px!important}
+.stTextInput label{color:rgba(180,210,255,.85)!important;font-family:'Cairo',sans-serif!important;font-size:.9rem!important;font-weight:600!important}
 .stButton>button{background:linear-gradient(135deg,#1a5fa8,#0a2a5e)!important;border:none!important;
-  border-radius:12px!important;color:#fff!important;font-family:'Cairo',sans-serif!important;font-weight:700!important;padding:13px!important;width:100%!important}
+  border-radius:12px!important;color:#fff!important;font-family:'Cairo',sans-serif!important;
+  font-weight:700!important;padding:16px!important;width:100%!important;font-size:1.05rem!important;
+  min-height:54px!important;touch-action:manipulation!important}
 </style>""", unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([1, 1.6, 1])
+    # Single centered column - works on all screen sizes
+    _, col2, _ = st.columns([0.5, 3, 0.5])
     with col2:
-        st.markdown('<div style="text-align:center;font-size:3rem;margin:20px 0 8px">🌊</div>', unsafe_allow_html=True)
+        st.markdown('<div style="text-align:center;font-size:3rem;margin:30px 0 8px">🌊</div>', unsafe_allow_html=True)
         st.markdown('<div class="login-title">حاسبة شبكات تصريف السيول</div>', unsafe_allow_html=True)
         st.markdown('<div class="login-sub">Flood Drainage Network Calculator · Eng. Ahmed Adam</div>', unsafe_allow_html=True)
         st.markdown('<div class="login-div"></div>', unsafe_allow_html=True)
         username = st.text_input("اسم المستخدم", placeholder="أدخل اسم المستخدم", key="login_user")
         password = st.text_input("كلمة المرور", type="password", placeholder="• • • • • • • •", key="login_pass")
+        st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🔑  تسجيل الدخول", use_container_width=True):
             if check_credentials(username.strip(), password):
                 st.session_state["authenticated"] = True
@@ -124,40 +143,52 @@ inject_security()
 st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
 html,body,[class*="css"],.stApp{font-family:'Cairo',sans-serif!important;direction:rtl}
-[data-testid="stSidebar"]{min-width:330px!important;max-width:380px!important;background:#f7f9fc!important}
-.hdr{background:linear-gradient(135deg,#0a2a5e,#1a5fa8);color:#fff;padding:14px 20px;border-radius:10px;
-  margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
-.hdr h1{margin:0;font-size:1.25rem;font-weight:900}
-.hdr p{margin:2px 0 0;font-size:.8rem;color:#b8d9f8}
+[data-testid="stSidebar"]{min-width:300px!important;max-width:340px!important;background:#f7f9fc!important}
+.hdr{background:linear-gradient(135deg,#0a2a5e,#1a5fa8);color:#fff;padding:12px 14px;border-radius:10px;
+  margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px}
+.hdr h1{margin:0;font-size:1.05rem;font-weight:900;line-height:1.3}
+.hdr p{margin:2px 0 0;font-size:.75rem;color:#b8d9f8}
 .hdr .bdg{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);
-  padding:4px 12px;border-radius:14px;font-size:.75rem;font-weight:700}
-.mc{background:#fff;border-radius:8px;padding:10px 14px;box-shadow:0 2px 6px rgba(0,0,0,.07);
+  padding:4px 10px;border-radius:14px;font-size:.72rem;font-weight:700;white-space:nowrap}
+.mc{background:#fff;border-radius:8px;padding:10px 8px;box-shadow:0 2px 6px rgba(0,0,0,.07);
   border-top:3px solid #1a5fa8;text-align:center}
-.mc .v{font-size:1.35rem;font-weight:900;color:#0a2a5e}
-.mc .l{font-size:.75rem;color:#6b7a99;margin-top:2px}
-.res{background:linear-gradient(135deg,#0a2a5e,#1a5fa8);color:#fff!important;padding:16px 20px;
-  border-radius:10px;font-size:1rem;font-weight:700;text-align:center;
+.mc .v{font-size:1.2rem;font-weight:900;color:#0a2a5e}
+.mc .l{font-size:.7rem;color:#6b7a99;margin-top:2px}
+.res{background:linear-gradient(135deg,#0a2a5e,#1a5fa8);color:#fff!important;padding:14px 16px;
+  border-radius:10px;font-size:.9rem;font-weight:700;text-align:center;
   box-shadow:0 4px 14px rgba(26,95,168,.3);margin-top:8px;line-height:2}
 .ib{background:#eaf4ff;border-right:4px solid #1a5fa8;border-radius:6px;
-  padding:9px 13px;font-size:.83rem;color:#0a2a5e;margin-bottom:8px;direction:rtl;line-height:1.8}
+  padding:10px 13px;font-size:.85rem;color:#0a2a5e;margin-bottom:8px;direction:rtl;line-height:1.9}
 .pc{background:#fff;border:1.5px solid #d0e4f7;border-right:5px solid #1a5fa8;
-  border-radius:6px;padding:7px 11px;margin-bottom:5px;font-size:.8rem;color:#1a2a3a}
+  border-radius:6px;padding:8px 11px;margin-bottom:5px;font-size:.82rem;color:#1a2a3a}
 .pc b{color:#0a2a5e}
 .sig{background:#0a2a5e;color:#a8d0f0!important;text-align:center;
   padding:9px;border-radius:7px;margin-top:10px;font-size:.78rem}
 .sig b{color:#fff!important}
 .stButton>button{background:linear-gradient(135deg,#1a5fa8,#0a2a5e)!important;color:#fff!important;
-  border:none!important;border-radius:8px!important;font-family:'Cairo',sans-serif!important;
-  font-weight:700!important;font-size:.93rem!important;width:100%!important;padding:8px!important}
+  border:none!important;border-radius:10px!important;font-family:'Cairo',sans-serif!important;
+  font-weight:700!important;font-size:.95rem!important;width:100%!important;
+  padding:12px 8px!important;min-height:48px!important;touch-action:manipulation!important}
 .seg-card{background:#fff;border:1.5px solid #d0e4f7;border-right:5px solid #0a2a5e;
-  border-radius:8px;padding:12px 16px;margin-bottom:10px}
-.seg-card h4{color:#0a2a5e;margin:0 0 6px;font-size:.9rem}
-.tbadge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:.75rem;font-weight:700;margin-bottom:4px}
+  border-radius:8px;padding:12px 14px;margin-bottom:10px}
+.seg-card h4{color:#0a2a5e;margin:0 0 6px;font-size:.88rem}
+.tbadge{display:inline-block;padding:4px 12px;border-radius:12px;font-size:.78rem;font-weight:700;margin-bottom:4px}
 .tp{background:#eaf4ff;color:#1a5fa8}
 .tb{background:#fff3e0;color:#e65100}
 .to{background:#e8f5e9;color:#2e7d32}
-.section-title{color:#0a2a5e;font-size:1rem;font-weight:900;margin:16px 0 8px;
+.section-title{color:#0a2a5e;font-size:.95rem;font-weight:900;margin:14px 0 8px;
   border-bottom:2px solid #1a5fa8;padding-bottom:4px}
+/* Responsive grid - stack on mobile */
+@media(max-width:640px){
+  .mc .v{font-size:1rem}
+  .mc .l{font-size:.65rem}
+  .hdr h1{font-size:.95rem}
+  .res{font-size:.82rem;padding:12px}
+  .seg-card{padding:10px 12px}
+}
+/* Wider tap targets for radio & select */
+.stRadio>div>label{padding:10px 14px!important;border-radius:8px!important;min-height:44px!important;display:flex!important;align-items:center!important}
+.stSelectbox [data-baseweb="select"]>div{min-height:46px!important}
 </style>""", unsafe_allow_html=True)
 
 RLAT, RLON = 24.7136, 46.6753
@@ -459,12 +490,12 @@ for k, v in DEFAULTS.items():
 # ══ Sidebar ══
 with st.sidebar:
     st.markdown('<div style="background:linear-gradient(135deg,#0a2a5e,#1a5fa8);color:#fff;'
-                'padding:12px 16px;text-align:center;margin:-1px -1px 12px">'
-                '<b style="font-size:.97rem">🌊 حاسبة شبكات السيول</b><br>'
+                'padding:14px 16px;text-align:center;margin:-1px -1px 14px;border-radius:0 0 10px 10px">'
+                '<b style="font-size:1rem">🌊 حاسبة شبكات السيول</b><br>'
                 '<small style="color:#b8d9f8">Eng. Ahmed Adam</small></div>', unsafe_allow_html=True)
     uc1, uc2 = st.columns([2,1])
     with uc1:
-        st.markdown(f'<div style="font-size:.82rem;color:#0a2a5e;padding:4px 0">'
+        st.markdown(f'<div style="font-size:.85rem;color:#0a2a5e;padding:4px 0">'
                     f'👤 <b>{st.session_state.get("current_user","")}</b></div>', unsafe_allow_html=True)
     with uc2:
         if st.button("خروج 🚪", key="logout_btn"):
@@ -472,6 +503,7 @@ with st.sidebar:
             st.rerun()
     st.markdown("---")
     st.markdown("**📂 رفع بيانات الشبكة**")
+    st.markdown('<div style="font-size:.78rem;color:#555;margin-bottom:6px">يدعم GeoJSON وملفات Shapefile (zip)</div>', unsafe_allow_html=True)
     up = st.file_uploader("GeoJSON أو Shapefile (zip)", type=["geojson","json","zip"], label_visibility="collapsed")
     if up:
         raw = up.read(); ext = up.name.lower().rsplit(".",1)[-1]
@@ -500,20 +532,28 @@ with st.sidebar:
         st.caption(f"📊 {len(st.session_state.feats)} خط — {tl/1000:.2f} كم")
 
     st.markdown("---")
-    st.markdown("**💲 الأسعار الإرشادية**")
-    st.markdown('<div style="font-size:.78rem;color:#0a2a5e;font-weight:700;margin-bottom:4px">🔵 أنابيب حسب القطر</div>', unsafe_allow_html=True)
-    for dia, price in PIPE_PRICES.items():
-        st.markdown(f'<div class="pc"><b>{dia} ملم</b> <span style="float:left;color:#c0392b;font-weight:900">{price:,}</span></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="pc" style="border-right-color:#e65100"><b>🟠 قناة صندوقية</b><br><span style="color:#c0392b;font-weight:900">{int(BOX_CHANNEL_PRICE):,} ر/م</span></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="pc" style="border-right-color:#2e7d32"><b>🟢 قناة مفتوحة</b><br><span style="color:#c0392b;font-weight:900">{int(OPEN_CHANNEL_PRICE):,} ر/م</span></div>', unsafe_allow_html=True)
+    with st.expander("💲 الأسعار الإرشادية", expanded=False):
+        st.markdown('<div style="font-size:.78rem;color:#0a2a5e;font-weight:700;margin-bottom:4px">🔵 أنابيب حسب القطر</div>', unsafe_allow_html=True)
+        for dia, price in PIPE_PRICES.items():
+            st.markdown(f'<div class="pc"><b>{dia} ملم</b> <span style="float:left;color:#c0392b;font-weight:900">{price:,}</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="pc" style="border-right-color:#e65100"><b>🟠 قناة صندوقية</b><br><span style="color:#c0392b;font-weight:900">{int(BOX_CHANNEL_PRICE):,} ر/م</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="pc" style="border-right-color:#2e7d32"><b>🟢 قناة مفتوحة</b><br><span style="color:#c0392b;font-weight:900">{int(OPEN_CHANNEL_PRICE):,} ر/م</span></div>', unsafe_allow_html=True)
     st.markdown('<div class="sig"><b>Eng: Ahmed Adam</b><br>شبكات تصريف السيول © 2025</div>', unsafe_allow_html=True)
 
 # ══ Header ══
 st.markdown("""<div class="hdr">
-  <div><h1>🌊 حاسبة تكلفة شبكات تصريف السيول</h1>
-  <p>تحليل الشبكات · حساب الأطوال · تقدير التكاليف</p></div>
+  <div>
+    <h1>🌊 حاسبة تكلفة شبكات تصريف السيول</h1>
+    <p>تحليل الشبكات · حساب الأطوال · تقدير التكاليف</p>
+  </div>
   <div class="bdg">Eng: Ahmed Adam</div>
 </div>""", unsafe_allow_html=True)
+
+# ── زر فتح القائمة الجانبية للموبايل ──
+st.markdown(
+    '<div style="text-align:right;margin-bottom:8px">'
+    '<span style="font-size:.78rem;color:#1a5fa8;font-weight:600">◀ افتح القائمة لرفع الملف وإعدادات الأسعار</span>'
+    '</div>', unsafe_allow_html=True)
 
 tab1, tab2 = st.tabs(["🗺️ الشبكة والحساب", "📊 جدول البيانات"])
 
@@ -530,11 +570,10 @@ with tab1:
     # إحصائيات سريعة
     if feats:
         tl = sum(x["len"] for x in feats)
-        c1,c2,c3 = st.columns(3)
-        c1.markdown(f'<div class="mc"><div class="v">{len(feats):,}</div><div class="l">عدد الخطوط</div></div>',unsafe_allow_html=True)
-        c2.markdown(f'<div class="mc"><div class="v">{tl/1000:,.2f}</div><div class="l">إجمالي الطول (كم)</div></div>',unsafe_allow_html=True)
-        c3.markdown(f'<div class="mc"><div class="v">{tl:,.0f}</div><div class="l">إجمالي الطول (م)</div></div>',unsafe_allow_html=True)
-        st.markdown("<br>",unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        c1.markdown(f'<div class="mc"><div class="v">{len(feats):,}</div><div class="l">عدد الخطوط</div></div>', unsafe_allow_html=True)
+        c2.markdown(f'<div class="mc"><div class="v">{tl/1000:,.2f}</div><div class="l">إجمالي الطول (كم)</div></div>', unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
 
     # ── الخريطة ──
     mc = list(map_center(st.session_state.ac)) if st.session_state.ac else [RLAT, RLON]
@@ -597,7 +636,7 @@ with tab1:
         "circlemarker":False,"marker":False},
         edit_options={"edit":True,"remove":True}).add_to(m)
 
-    map_data = st_folium(m, width="100%", height=430,
+    map_data = st_folium(m, width="100%", height=360,
                           returned_objects=["all_drawings"], key="main_map")
 
     # ── قراءة الخطوط المرسومة ──
@@ -626,7 +665,7 @@ with tab1:
     # ════════════════════════════════════════
     if feats:
         st.markdown('<div class="section-title">📌 اختيار الخطوط من الملف</div>', unsafe_allow_html=True)
-        ca1,ca2,_ = st.columns([2,2,4])
+        ca1, ca2 = st.columns(2)
         with ca1:
             if st.button("✅ تحديد الكل", key="sel_all"):
                 st.session_state.sel_set = json.dumps([f["i"] for f in feats])
@@ -683,63 +722,55 @@ with tab1:
                 if meta["line_type"] == "pipe":
                     st.markdown("**② القطر (ملم):**")
                     dia_col_opts = ["إدخال يدوي"] + [k for k in props_keys]
-                    dc1, dc2 = st.columns([2,2])
-                    with dc1:
-                        dia_src = st.selectbox("مصدر القطر:",
-                            dia_col_opts, key=f"diasrc_{feat_i}")
-                    with dc2:
-                        if dia_src == "إدخال يدوي":
-                            dia_manual = st.selectbox(
-                                "القطر (ملم):",
-                                list(PIPE_PRICES.keys()),
-                                index=list(PIPE_PRICES.keys()).index(
-                                    meta.get("diameter_mm",1400)
-                                    if meta.get("diameter_mm") in PIPE_PRICES else 1400),
-                                key=f"dia_{feat_i}")
-                            meta["diameter_mm"] = dia_manual
-                        else:
-                            # قراءة القطر من عمود الملف
-                            dia_val = f["props"].get(dia_src)
-                            try:
-                                dia_from_file = int(float(dia_val))
-                                closest = min(PIPE_PRICES.keys(), key=lambda x: abs(x-dia_from_file))
-                                meta["diameter_mm"] = closest
-                                st.markdown(
-                                    f'<div class="ib" style="margin-top:22px">'
-                                    f'📏 من الملف: <b>{dia_from_file}</b> ملم → معياري: <b>{closest}</b> ملم'
-                                    f'</div>', unsafe_allow_html=True)
-                            except:
-                                st.warning("قيمة القطر في الملف غير صالحة — سيُستخدم 1400 ملم")
-                                meta["diameter_mm"] = 1400
+                    dia_src = st.selectbox("مصدر القطر:", dia_col_opts, key=f"diasrc_{feat_i}")
+                    if dia_src == "إدخال يدوي":
+                        dia_manual = st.selectbox(
+                            "القطر (ملم):",
+                            list(PIPE_PRICES.keys()),
+                            index=list(PIPE_PRICES.keys()).index(
+                                meta.get("diameter_mm",1400)
+                                if meta.get("diameter_mm") in PIPE_PRICES else 1400),
+                            key=f"dia_{feat_i}")
+                        meta["diameter_mm"] = dia_manual
+                    else:
+                        dia_val = f["props"].get(dia_src)
+                        try:
+                            dia_from_file = int(float(dia_val))
+                            closest = min(PIPE_PRICES.keys(), key=lambda x: abs(x-dia_from_file))
+                            meta["diameter_mm"] = closest
+                            st.markdown(
+                                f'<div class="ib" style="margin-top:6px">'
+                                f'📏 من الملف: <b>{dia_from_file}</b> ملم → معياري: <b>{closest}</b> ملم'
+                                f'</div>', unsafe_allow_html=True)
+                        except:
+                            st.warning("قيمة القطر في الملف غير صالحة — سيُستخدم 1400 ملم")
+                            meta["diameter_mm"] = 1400
                 else:
                     meta["diameter_mm"] = None
 
                 # ── الخطوة 3: السعر ──
                 st.markdown("**③ السعر (ريال/م):**")
                 guide_price = get_price(meta["line_type"], meta.get("diameter_mm"), 0)
-                pc1, pc2 = st.columns([2,2])
-                with pc1:
-                    price_mode = st.radio(
-                        "مصدر السعر:",
-                        ["إرشادي", "مخصص"],
-                        key=f"prmode_{feat_i}",
-                        horizontal=True,
-                        label_visibility="collapsed")
-                with pc2:
-                    if price_mode == "مخصص":
-                        cp = st.number_input("سعر مخصص:", min_value=0.0,
-                            value=float(meta.get("custom_price") or guide_price),
-                            step=100.0, format="%.0f", key=f"cp_{feat_i}")
-                        meta["custom_price"] = cp
-                        final_price = cp
-                    else:
-                        meta["custom_price"] = 0
-                        final_price = guide_price
-                        st.markdown(
-                            f'<div class="mc" style="margin-top:4px">'
-                            f'<div class="v" style="font-size:1.1rem">{guide_price:,.0f}</div>'
-                            f'<div class="l">ريال/م (إرشادي)</div></div>',
-                            unsafe_allow_html=True)
+                price_mode = st.radio(
+                    "مصدر السعر:",
+                    ["إرشادي", "مخصص"],
+                    key=f"prmode_{feat_i}",
+                    horizontal=True,
+                    label_visibility="collapsed")
+                if price_mode == "مخصص":
+                    cp = st.number_input("سعر مخصص (ريال/م):", min_value=0.0,
+                        value=float(meta.get("custom_price") or guide_price),
+                        step=100.0, format="%.0f", key=f"cp_{feat_i}")
+                    meta["custom_price"] = cp
+                    final_price = cp
+                else:
+                    meta["custom_price"] = 0
+                    final_price = guide_price
+                    st.markdown(
+                        f'<div class="mc" style="margin-top:4px">'
+                        f'<div class="v" style="font-size:1.1rem">{guide_price:,.0f}</div>'
+                        f'<div class="l">ريال/م (إرشادي)</div></div>',
+                        unsafe_allow_html=True)
 
                 st.markdown(
                     f'<div style="background:#eaf4ff;border-radius:6px;padding:7px 12px;'
@@ -793,29 +824,26 @@ with tab1:
                 # ── السعر ──
                 st.markdown("**③ السعر (ريال/م):**")
                 guide_d = get_price(meta_d["line_type"], meta_d.get("diameter_mm"), 0)
-                dp1, dp2 = st.columns([2,2])
-                with dp1:
-                    price_mode_d = st.radio(
-                        "مصدر السعر:",
-                        ["إرشادي", "مخصص"],
-                        key=f"dprmode_{idx}",
-                        horizontal=True,
-                        label_visibility="collapsed")
-                with dp2:
-                    if price_mode_d == "مخصص":
-                        cp_d = st.number_input("سعر مخصص:", min_value=0.0,
-                            value=float(meta_d.get("custom_price") or guide_d),
-                            step=100.0, format="%.0f", key=f"dcp_{idx}")
-                        meta_d["custom_price"] = cp_d
-                        final_d = cp_d
-                    else:
-                        meta_d["custom_price"] = 0
-                        final_d = guide_d
-                        st.markdown(
-                            f'<div class="mc" style="margin-top:4px">'
-                            f'<div class="v" style="font-size:1.1rem">{guide_d:,.0f}</div>'
-                            f'<div class="l">ريال/م (إرشادي)</div></div>',
-                            unsafe_allow_html=True)
+                price_mode_d = st.radio(
+                    "مصدر السعر:",
+                    ["إرشادي", "مخصص"],
+                    key=f"dprmode_{idx}",
+                    horizontal=True,
+                    label_visibility="collapsed")
+                if price_mode_d == "مخصص":
+                    cp_d = st.number_input("سعر مخصص (ريال/م):", min_value=0.0,
+                        value=float(meta_d.get("custom_price") or guide_d),
+                        step=100.0, format="%.0f", key=f"dcp_{idx}")
+                    meta_d["custom_price"] = cp_d
+                    final_d = cp_d
+                else:
+                    meta_d["custom_price"] = 0
+                    final_d = guide_d
+                    st.markdown(
+                        f'<div class="mc" style="margin-top:4px">'
+                        f'<div class="v" style="font-size:1.1rem">{guide_d:,.0f}</div>'
+                        f'<div class="l">ريال/م (إرشادي)</div></div>',
+                        unsafe_allow_html=True)
 
                 st.markdown(
                     f'<div style="background:#eaf4ff;border-radius:6px;padding:7px 12px;'
@@ -834,12 +862,14 @@ with tab1:
         total_sel_len   = sum(f["len"] for f in sfeats)
         total_drawn_len = sum(length_m_wgs(s) for s in raw_drawn)
         stot = total_sel_len + total_drawn_len
-        cs1,cs2,cs3,cs4 = st.columns(4)
-        cs1.markdown(f'<div class="mc"><div class="v">{len(sfeats)}</div><div class="l">خطوط من ملف</div></div>',unsafe_allow_html=True)
-        cs2.markdown(f'<div class="mc"><div class="v">{len(raw_drawn)}</div><div class="l">خطوط مرسومة</div></div>',unsafe_allow_html=True)
-        cs3.markdown(f'<div class="mc"><div class="v">{stot:,.1f}</div><div class="l">مجموع الأطوال (م)</div></div>',unsafe_allow_html=True)
-        cs4.markdown(f'<div class="mc"><div class="v">{stot/1000:.3f}</div><div class="l">مجموع الأطوال (كم)</div></div>',unsafe_allow_html=True)
-        st.markdown("<br>",unsafe_allow_html=True)
+        cs1, cs2 = st.columns(2)
+        cs1.markdown(f'<div class="mc"><div class="v">{len(sfeats)}</div><div class="l">خطوط من ملف</div></div>', unsafe_allow_html=True)
+        cs2.markdown(f'<div class="mc"><div class="v">{len(raw_drawn)}</div><div class="l">خطوط مرسومة</div></div>', unsafe_allow_html=True)
+        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+        cs3, cs4 = st.columns(2)
+        cs3.markdown(f'<div class="mc"><div class="v">{stot:,.0f}</div><div class="l">مجموع الأطوال (م)</div></div>', unsafe_allow_html=True)
+        cs4.markdown(f'<div class="mc"><div class="v">{stot/1000:.3f}</div><div class="l">مجموع الأطوال (كم)</div></div>', unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
 
     # ════════════════════════════════════════
     # زر الحساب
@@ -941,12 +971,14 @@ with tab1:
                     mime="application/pdf", key="dl_pdf")
 
     if not feats and not raw_drawn:
-        st.markdown('<div class="ib">⬅️ ارفع ملف من القائمة الجانبية، أو ارسم خطاً على الخريطة لحساب التكلفة.</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="ib">📱 <b>للبدء:</b> افتح القائمة الجانبية (≡) وارفع ملف الشبكة، أو ارسم خطاً مباشرة على الخريطة أعلاه.</div>',
+            unsafe_allow_html=True)
 
 # ══ TAB 2 ══
 with tab2:
     if not st.session_state.feats:
-        st.markdown('<div class="ib">⬅️ ارفع ملف من القائمة الجانبية لعرض الجدول.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="ib">📱 افتح القائمة الجانبية (≡) وارفع ملف لعرض بيانات الشبكة.</div>', unsafe_allow_html=True)
     else:
         st.markdown(f"### 📋 بيانات الشبكة — {len(st.session_state.feats)} خط")
         search_idx = st.text_input("🔍 بحث برقم الخط:", placeholder="مثال: 0 أو 5", key="search_idx")

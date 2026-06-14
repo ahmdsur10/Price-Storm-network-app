@@ -654,15 +654,14 @@ with tab1:
         line_color  = "#e74c3c" if is_sel else "#1a5fa8"
         line_weight = 7 if is_sel else 4
         latlngs = [(c[1],c[0]) for c in f["coords"]]
+        tip_label = f"خط #{f['i']} | {f['len']:,.0f} م"
 
         # هالة للمحدد
         if is_sel:
             folium.PolyLine(latlngs, color="#ff6666", weight=14, opacity=0.2).add_to(m)
 
-        # الخط — tooltip يحمل رقمه للاختيار عند الضغط
-        tip_label = f"خط #{f['i']} | {f['len']:,.0f} م"
-        folium.PolyLine(latlngs, color=line_color, weight=line_weight, opacity=0.9,
-                        tooltip=tip_label).add_to(m)
+        # الخط الرئيسي
+        folium.PolyLine(latlngs, color=line_color, weight=line_weight, opacity=0.9).add_to(m)
 
         # نقاط البداية والنهاية
         if len(f["coords"]) >= 2:
@@ -673,7 +672,7 @@ with tab1:
                 radius=5, color="#fff", weight=2, fill=True,
                 fill_color="#c0392b", fill_opacity=1).add_to(m)
 
-        # سهم الاتجاه
+        # سهم الاتجاه + tooltip (هذا يُرجعه last_object_clicked_tooltip)
         n = len(f["coords"])
         if n >= 2:
             mid_idx = n//2
@@ -685,10 +684,26 @@ with tab1:
                     icon=arrow_icon(bearing(p1c,p2c), line_color),
                     tooltip=tip_label).add_to(m)
 
+        # ── طبقة الضغط: CircleMarker شفافة كبيرة موزعة على الخط ──
+        # last_object_clicked_tooltip يعمل مع CircleMarker لكن لا يعمل مع PolyLine
+        coords = f["coords"]
+        step = max(1, len(coords) // 10)
+        for ci in range(0, len(coords), step):
+            pt = coords[ci]
+            folium.CircleMarker(
+                location=(pt[1], pt[0]),
+                radius=10,
+                color=line_color,
+                weight=0,
+                fill=True,
+                fill_color=line_color,
+                fill_opacity=0.01,
+                tooltip=tip_label,
+            ).add_to(m)
+
         # شارة المختار
         if is_sel:
-            mid_idx = len(f["coords"])//2
-            mid = f["coords"][mid_idx]
+            mid = f["coords"][len(f["coords"])//2]
             folium.Marker((mid[1], mid[0]),
                 icon=folium.DivIcon(
                     html=(f'<div style="background:#e74c3c;color:#fff;border-radius:12px;'
@@ -713,30 +728,57 @@ with tab1:
             unsafe_allow_html=True)
 
     map_data = st_folium(m, width="100%", height=380,
-                         returned_objects=["all_drawings", "last_object_clicked_tooltip"],
+                         returned_objects=["all_drawings", "last_object_clicked_tooltip", "last_clicked"],
                          key="main_map")
 
-    # ── اختيار الخط من الخريطة عبر tooltip ──
+    # ── اختيار الخط من الخريطة ──
+    # الطريقة 1: عبر tooltip عند الضغط على CircleMarker
     if feats and map_data:
+        selected_feat_id = None
+
         tip = (map_data.get("last_object_clicked_tooltip") or "").strip()
         if tip and "خط #" in tip:
             try:
-                feat_id = int(tip.split("خط #")[1].split()[0].rstrip("|").strip())
-                tip_key = f"{feat_id}:{tip}"
-                if st.session_state.get("_last_tip_key") != tip_key:
-                    st.session_state["_last_tip_key"] = tip_key
-                    cur_c = set(json.loads(st.session_state.sel_set))
-                    if feat_id in cur_c:
-                        cur_c.discard(feat_id)
-                    else:
-                        cur_c.add(feat_id)
-                    st.session_state.sel_set = json.dumps(list(cur_c))
-                    for k in list(st.session_state.sel_feat_meta.keys()):
-                        if k not in cur_c:
-                            del st.session_state.sel_feat_meta[k]
-                    st.rerun()
+                selected_feat_id = int(tip.split("خط #")[1].split()[0].rstrip("|").strip())
+                trigger_key = f"tip:{selected_feat_id}:{tip}"
             except:
-                pass
+                selected_feat_id = None
+
+        # الطريقة 2: إيجاد أقرب خط لنقطة الضغط على الخريطة
+        if selected_feat_id is None:
+            lc = map_data.get("last_clicked")
+            if lc and isinstance(lc, dict):
+                clat = lc.get("lat"); clng = lc.get("lng")
+                if clat is not None and clng is not None:
+                    def _dps(px,py,ax,ay,bx,by):
+                        dx,dy=bx-ax,by-ay
+                        if dx==0 and dy==0: return math.hypot(px-ax,py-ay)
+                        t=max(0,min(1,((px-ax)*dx+(py-ay)*dy)/(dx*dx+dy*dy)))
+                        return math.hypot(px-(ax+t*dx),py-(ay+t*dy))
+                    best_id,best_d=None,float("inf")
+                    for ff in feats:
+                        for ci in range(len(ff["coords"])-1):
+                            d=_dps(clng,clat,
+                                   ff["coords"][ci][0],ff["coords"][ci][1],
+                                   ff["coords"][ci+1][0],ff["coords"][ci+1][1])
+                            if d<best_d: best_d=d; best_id=ff["i"]
+                    if best_id is not None and best_d < 0.002:
+                        selected_feat_id = best_id
+                        trigger_key = f"lc:{clat:.6f},{clng:.6f}"
+
+        if selected_feat_id is not None:
+            if st.session_state.get("_last_tip_key") != trigger_key:
+                st.session_state["_last_tip_key"] = trigger_key
+                cur_c = set(json.loads(st.session_state.sel_set))
+                if selected_feat_id in cur_c:
+                    cur_c.discard(selected_feat_id)
+                else:
+                    cur_c.add(selected_feat_id)
+                st.session_state.sel_set = json.dumps(list(cur_c))
+                for k in list(st.session_state.sel_feat_meta.keys()):
+                    if k not in cur_c:
+                        del st.session_state.sel_feat_meta[k]
+                st.rerun()
 
     # ── قراءة الخطوط المرسومة ──
     raw_drawn = []

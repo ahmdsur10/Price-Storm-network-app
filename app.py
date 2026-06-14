@@ -278,6 +278,7 @@ DEFAULTS = {
     "feats":[], "ac":[], "feats_json":"[]", "sel_set":"[]",
     "cost_result":None, "pdf_bytes":None, "_fhash":None,
     "props_keys":[], "sel_feat_meta":{}, "drawn_meta":[],
+    "_last_clicked_id": None,
 }
 for k, v in DEFAULTS.items():
     if k not in st.session_state:
@@ -650,27 +651,59 @@ with tab1:
 
     for f in feats:
         is_sel = f["i"] in sel_set
-        line_color = "#e74c3c" if is_sel else "#222222"
+        line_color = "#e74c3c" if is_sel else "#1a5fa8"
+        line_weight = 7 if is_sel else 3
+        line_opacity = 1.0 if is_sel else 0.7
         latlngs = [(c[1],c[0]) for c in f["coords"]]
-        popup_html = (f"<div dir='rtl' style='font-family:Cairo,sans-serif;font-size:13px;min-width:160px'>"
-                      f"<b style='color:#1a5fa8'>خط #{f['i']}</b><br>الطول: <b>{f['len']:,.1f} م</b></div>")
-        folium.PolyLine(latlngs, color=line_color, weight=5 if is_sel else 3, opacity=0.9,
+
+        # هالة للخطوط المحددة
+        if is_sel:
+            folium.PolyLine(latlngs, color="#ff0000", weight=13, opacity=0.25).add_to(m)
+
+        popup_html = (f"<div dir='rtl' style='font-family:Cairo,sans-serif;font-size:13px;min-width:180px;padding:4px'>"
+                      f"{'<b style=\"color:#e74c3c\">✓ محدد</b><br>' if is_sel else ''}"
+                      f"<b style='color:#1a5fa8'>خط #{f['i']}</b><br>"
+                      f"الطول: <b>{f['len']:,.1f} م</b><br>"
+                      f"<small style='color:#888'>اضغط لتحديد/إلغاء</small></div>")
+        folium.PolyLine(latlngs, color=line_color, weight=line_weight, opacity=line_opacity,
                         tooltip=f"خط #{f['i']} | {f['len']:,.0f} م",
-                        popup=folium.Popup(popup_html, max_width=200)).add_to(m)
+                        popup=folium.Popup(popup_html, max_width=220)).add_to(m)
+
+        # نقاط البداية والنهاية
         if len(f["coords"]) >= 2:
             folium.CircleMarker(location=(f["coords"][0][1],f["coords"][0][0]),
-                radius=5,color="#fff",weight=2,fill=True,fill_color="#27ae60",fill_opacity=1.0,tooltip="بداية الخط").add_to(m)
+                radius=5 if not is_sel else 7,color="#fff",weight=2,
+                fill=True,fill_color="#27ae60",fill_opacity=1.0,tooltip="بداية الخط").add_to(m)
             folium.CircleMarker(location=(f["coords"][-1][1],f["coords"][-1][0]),
-                radius=5,color="#fff",weight=2,fill=True,fill_color="#c0392b",fill_opacity=1.0,tooltip="نهاية الخط").add_to(m)
-            n = len(f["coords"])
-            if n >= 2:
-                mid_idx = n//2
-                p1 = f["coords"][max(0,mid_idx-1)]; p2 = f["coords"][min(n-1,mid_idx+1)]
-                mid = f["coords"][mid_idx]
-                if p1 != p2:
-                    folium.Marker(location=(mid[1],mid[0]),
-                        icon=arrow_icon(bearing(p1,p2),line_color),
-                        tooltip=f"اتجاه خط #{f['i']}").add_to(m)
+                radius=5 if not is_sel else 7,color="#fff",weight=2,
+                fill=True,fill_color="#c0392b",fill_opacity=1.0,tooltip="نهاية الخط").add_to(m)
+
+        # سهم الاتجاه
+        n = len(f["coords"])
+        if n >= 2:
+            mid_idx = n//2
+            p1 = f["coords"][max(0,mid_idx-1)]; p2 = f["coords"][min(n-1,mid_idx+1)]
+            mid = f["coords"][mid_idx]
+            if p1 != p2:
+                folium.Marker(location=(mid[1],mid[0]),
+                    icon=arrow_icon(bearing(p1,p2), line_color),
+                    tooltip=f"اتجاه خط #{f['i']}").add_to(m)
+
+        # شارة رقم الخط للمختار
+        if is_sel:
+            mid_idx = len(f["coords"])//2
+            mid = f["coords"][mid_idx]
+            folium.Marker(
+                location=(mid[1], mid[0]),
+                icon=folium.DivIcon(
+                    html=(f'<div style="background:#e74c3c;color:#fff;border-radius:12px;'
+                          f'padding:2px 8px;font-size:11px;font-weight:900;'
+                          f'font-family:Cairo,sans-serif;white-space:nowrap;'
+                          f'box-shadow:0 2px 6px rgba(0,0,0,.4);border:2px solid #fff">'
+                          f'✓ #{f["i"]}</div>'),
+                    icon_size=(60, 24), icon_anchor=(30, 12)),
+                tooltip=f"خط #{f['i']} — محدد"
+            ).add_to(m)
 
     Draw(draw_options={
         "polyline":{"shapeOptions":{"color":"#00aa00","weight":4,"opacity":.9}},
@@ -678,7 +711,38 @@ with tab1:
         "circlemarker":False,"marker":False},
         edit_options={"edit":True,"remove":True}).add_to(m)
 
-    map_data = st_folium(m, width="100%", height=340, returned_objects=["all_drawings"], key="main_map")
+    # تلميح الاختيار من الخريطة
+    if feats:
+        st.markdown(
+            '<div style="font-size:.76rem;color:#1a5fa8;background:#eaf4ff;border-radius:6px;'
+            'padding:5px 10px;margin-bottom:4px;text-align:center">'
+            '👆 اضغط على أي خط في الخريطة لتحديده أو إلغاء تحديده</div>',
+            unsafe_allow_html=True)
+
+    map_data = st_folium(m, width="100%", height=340,
+                         returned_objects=["all_drawings","last_object_clicked_tooltip"],
+                         key="main_map")
+
+    # اختيار الخط بالضغط على الخريطة
+    if feats and map_data:
+        clicked_tip = map_data.get("last_object_clicked_tooltip") or ""
+        if clicked_tip and "خط #" in clicked_tip:
+            try:
+                clicked_id = int(clicked_tip.split("خط #")[1].split()[0].rstrip("|").strip())
+                cur_sel_click = set(json.loads(st.session_state.sel_set))
+                if st.session_state.get("_last_clicked_id") != clicked_id:
+                    st.session_state["_last_clicked_id"] = clicked_id
+                    if clicked_id in cur_sel_click:
+                        cur_sel_click.discard(clicked_id)
+                    else:
+                        cur_sel_click.add(clicked_id)
+                    st.session_state.sel_set = json.dumps(list(cur_sel_click))
+                    for k in list(st.session_state.sel_feat_meta.keys()):
+                        if k not in cur_sel_click:
+                            del st.session_state.sel_feat_meta[k]
+                    st.rerun()
+            except:
+                pass
 
     # ── قراءة الخطوط المرسومة ──
     raw_drawn = []

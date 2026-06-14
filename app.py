@@ -649,10 +649,6 @@ with tab1:
         y = math.cos(lat1)*math.sin(lat2)-math.sin(lat1)*math.cos(lat2)*math.cos(dlon)
         return (math.degrees(math.atan2(x,y))+360)%360
 
-    # مجموعة للخطوط وأخرى لأزرار الضغط
-    line_group   = folium.FeatureGroup(name="الخطوط").add_to(m)
-    marker_group = folium.FeatureGroup(name="أزرار").add_to(m)
-
     for f in feats:
         is_sel = f["i"] in sel_set
         line_color  = "#e74c3c" if is_sel else "#1a5fa8"
@@ -661,51 +657,39 @@ with tab1:
 
         # هالة للمحدد
         if is_sel:
-            folium.PolyLine(latlngs, color="#ff6666", weight=14, opacity=0.2).add_to(line_group)
+            folium.PolyLine(latlngs, color="#ff6666", weight=14, opacity=0.2).add_to(m)
 
-        # الخط الرئيسي
-        folium.PolyLine(latlngs, color=line_color, weight=line_weight, opacity=0.9).add_to(line_group)
+        # الخط — tooltip يحمل رقمه للاختيار عند الضغط
+        tip_label = f"خط #{f['i']} | {f['len']:,.0f} م"
+        folium.PolyLine(latlngs, color=line_color, weight=line_weight, opacity=0.9,
+                        tooltip=tip_label).add_to(m)
 
         # نقاط البداية والنهاية
         if len(f["coords"]) >= 2:
             folium.CircleMarker((f["coords"][0][1],f["coords"][0][0]),
-                radius=5, color="#fff", weight=2, fill=True, fill_color="#27ae60", fill_opacity=1).add_to(line_group)
+                radius=5, color="#fff", weight=2, fill=True,
+                fill_color="#27ae60", fill_opacity=1).add_to(m)
             folium.CircleMarker((f["coords"][-1][1],f["coords"][-1][0]),
-                radius=5, color="#fff", weight=2, fill=True, fill_color="#c0392b", fill_opacity=1).add_to(line_group)
+                radius=5, color="#fff", weight=2, fill=True,
+                fill_color="#c0392b", fill_opacity=1).add_to(m)
 
         # سهم الاتجاه
         n = len(f["coords"])
         if n >= 2:
             mid_idx = n//2
-            p1c = f["coords"][max(0,mid_idx-1)]; p2c = f["coords"][min(n-1,mid_idx+1)]
+            p1c = f["coords"][max(0,mid_idx-1)]
+            p2c = f["coords"][min(n-1,mid_idx+1)]
             mid = f["coords"][mid_idx]
             if p1c != p2c:
-                folium.Marker((mid[1],mid[0]), icon=arrow_icon(bearing(p1c,p2c), line_color)).add_to(line_group)
+                folium.Marker((mid[1],mid[0]),
+                    icon=arrow_icon(bearing(p1c,p2c), line_color),
+                    tooltip=tip_label).add_to(m)
 
-        # ── زر الضغط: CircleMarker كبير + شفاف في كل نقطة من الخط ──
-        # هذا هو المفتاح: كل نقطة تحمل رقم الخط في tooltip لقراءته لاحقاً
-        check_mark = "✓ " if is_sel else ""
-        label = f"{check_mark}خط #{f['i']} | {f['len']:,.0f} م"
-        # نضع marker كبير شفاف على كل نقطة من الخط ليسهل الضغط عليه
-        step = max(1, len(f["coords"]) // 8)  # نقاط موزعة على الخط
-        for ci in range(0, len(f["coords"]), step):
-            pt = f["coords"][ci]
-            folium.CircleMarker(
-                location=(pt[1], pt[0]),
-                radius=12,
-                color="transparent",
-                fill=True,
-                fill_color="transparent",
-                fill_opacity=0.01,
-                tooltip=label,
-            ).add_to(marker_group)
-
-        # شارة رقم الخط المختار
+        # شارة المختار
         if is_sel:
             mid_idx = len(f["coords"])//2
             mid = f["coords"][mid_idx]
-            folium.Marker(
-                location=(mid[1], mid[0]),
+            folium.Marker((mid[1], mid[0]),
                 icon=folium.DivIcon(
                     html=(f'<div style="background:#e74c3c;color:#fff;border-radius:12px;'
                           f'padding:3px 9px;font-size:11px;font-weight:900;'
@@ -713,7 +697,7 @@ with tab1:
                           f'box-shadow:0 2px 6px rgba(0,0,0,.5);border:2px solid #fff">'
                           f'✓ #{f["i"]}</div>'),
                     icon_size=(70, 26), icon_anchor=(35, 13)),
-            ).add_to(marker_group)
+                tooltip=tip_label).add_to(m)
 
     Draw(draw_options={
         "polyline":{"shapeOptions":{"color":"#00aa00","weight":4,"opacity":.9}},
@@ -721,7 +705,6 @@ with tab1:
         "circlemarker":False,"marker":False},
         edit_options={"edit":True,"remove":True}).add_to(m)
 
-    # تلميح
     if feats:
         st.markdown(
             '<div style="font-size:.76rem;color:#1a5fa8;background:#eaf4ff;border-radius:6px;'
@@ -729,28 +712,27 @@ with tab1:
             '👆 اضغط على أي خط في الخريطة لتحديده — أو استخدم القائمة أدناه</div>',
             unsafe_allow_html=True)
 
-    map_data = st_folium(m, width="100%", height=360,
+    map_data = st_folium(m, width="100%", height=380,
                          returned_objects=["all_drawings", "last_object_clicked_tooltip"],
                          key="main_map")
 
-    # ── قراءة الضغط على الخريطة عبر tooltip ──
+    # ── اختيار الخط من الخريطة عبر tooltip ──
     if feats and map_data:
         tip = (map_data.get("last_object_clicked_tooltip") or "").strip()
-        # الـ tooltip شكله "✓ خط #5 | 1234 م" أو "خط #5 | 1234 م"
         if tip and "خط #" in tip:
             try:
                 feat_id = int(tip.split("خط #")[1].split()[0].rstrip("|").strip())
-                tip_key = f"tip_{feat_id}_{tip}"
+                tip_key = f"{feat_id}:{tip}"
                 if st.session_state.get("_last_tip_key") != tip_key:
                     st.session_state["_last_tip_key"] = tip_key
-                    cur_sel_c = set(json.loads(st.session_state.sel_set))
-                    if feat_id in cur_sel_c:
-                        cur_sel_c.discard(feat_id)
+                    cur_c = set(json.loads(st.session_state.sel_set))
+                    if feat_id in cur_c:
+                        cur_c.discard(feat_id)
                     else:
-                        cur_sel_c.add(feat_id)
-                    st.session_state.sel_set = json.dumps(list(cur_sel_c))
+                        cur_c.add(feat_id)
+                    st.session_state.sel_set = json.dumps(list(cur_c))
                     for k in list(st.session_state.sel_feat_meta.keys()):
-                        if k not in cur_sel_c:
+                        if k not in cur_c:
                             del st.session_state.sel_feat_meta[k]
                     st.rerun()
             except:

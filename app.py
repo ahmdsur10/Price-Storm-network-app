@@ -278,7 +278,7 @@ DEFAULTS = {
     "feats":[], "ac":[], "feats_json":"[]", "sel_set":"[]",
     "cost_result":None, "pdf_bytes":None, "_fhash":None,
     "props_keys":[], "sel_feat_meta":{}, "drawn_meta":[],
-    "_last_clicked_id": None,
+    "_last_click_key": None,
 }
 for k, v in DEFAULTS.items():
     if k not in st.session_state:
@@ -720,29 +720,55 @@ with tab1:
             unsafe_allow_html=True)
 
     map_data = st_folium(m, width="100%", height=340,
-                         returned_objects=["all_drawings","last_object_clicked_tooltip"],
+                         returned_objects=["all_drawings","last_clicked"],
                          key="main_map")
 
-    # اختيار الخط بالضغط على الخريطة
+    # ── اختيار الخط بالضغط على الخريطة (إيجاد أقرب خط للنقطة المضغوطة) ──
     if feats and map_data:
-        clicked_tip = map_data.get("last_object_clicked_tooltip") or ""
-        if clicked_tip and "خط #" in clicked_tip:
-            try:
-                clicked_id = int(clicked_tip.split("خط #")[1].split()[0].rstrip("|").strip())
-                cur_sel_click = set(json.loads(st.session_state.sel_set))
-                if st.session_state.get("_last_clicked_id") != clicked_id:
-                    st.session_state["_last_clicked_id"] = clicked_id
-                    if clicked_id in cur_sel_click:
-                        cur_sel_click.discard(clicked_id)
-                    else:
-                        cur_sel_click.add(clicked_id)
-                    st.session_state.sel_set = json.dumps(list(cur_sel_click))
-                    for k in list(st.session_state.sel_feat_meta.keys()):
-                        if k not in cur_sel_click:
-                            del st.session_state.sel_feat_meta[k]
-                    st.rerun()
-            except:
-                pass
+        lc = map_data.get("last_clicked")
+        if lc and isinstance(lc, dict):
+            clat = lc.get("lat"); clng = lc.get("lng")
+            if clat is not None and clng is not None:
+                click_key = f"{clat:.6f},{clng:.6f}"
+                if st.session_state.get("_last_click_key") != click_key:
+                    st.session_state["_last_click_key"] = click_key
+
+                    # إيجاد أقرب خط لنقطة الضغط
+                    def dist_point_to_segment(px, py, ax, ay, bx, by):
+                        dx, dy = bx-ax, by-ay
+                        if dx==0 and dy==0:
+                            return math.hypot(px-ax, py-ay)
+                        t = max(0, min(1, ((px-ax)*dx + (py-ay)*dy) / (dx*dx+dy*dy)))
+                        return math.hypot(px-(ax+t*dx), py-(ay+t*dy))
+
+                    def dist_to_line(clng, clat, coords):
+                        min_d = float("inf")
+                        for i in range(len(coords)-1):
+                            d = dist_point_to_segment(clng, clat,
+                                coords[i][0], coords[i][1],
+                                coords[i+1][0], coords[i+1][1])
+                            if d < min_d: min_d = d
+                        return min_d
+
+                    best_id, best_d = None, float("inf")
+                    for f in feats:
+                        if len(f["coords"]) >= 2:
+                            d = dist_to_line(clng, clat, f["coords"])
+                            if d < best_d:
+                                best_d = d; best_id = f["i"]
+
+                    # قبول الضغط فقط إذا كان قريباً بما يكفي (عتبة 0.0015 درجة ≈ 150م)
+                    if best_id is not None and best_d < 0.0015:
+                        cur_sel_click = set(json.loads(st.session_state.sel_set))
+                        if best_id in cur_sel_click:
+                            cur_sel_click.discard(best_id)
+                        else:
+                            cur_sel_click.add(best_id)
+                        st.session_state.sel_set = json.dumps(list(cur_sel_click))
+                        for k in list(st.session_state.sel_feat_meta.keys()):
+                            if k not in cur_sel_click:
+                                del st.session_state.sel_feat_meta[k]
+                        st.rerun()
 
     # ── قراءة الخطوط المرسومة ──
     raw_drawn = []
